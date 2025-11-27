@@ -1,6 +1,7 @@
 from datetime import datetime
 from app.models.price_list import PriceList
 from app.models.price_item import PriceListItem
+from app.models.product import Product
 from app.database import db
 
 class PriceService:
