@@ -7,15 +7,8 @@ from app.services.price_service import PriceService
 
 prices_bp = Blueprint("prices_bp", __name__)
 
-
-# ----------------------------------------------------------------------
-# 1. Список прайсов
-# ----------------------------------------------------------------------
 @prices_bp.route("/", methods=["GET"])
 def list_price_lists():
-    """
-    Получить список всех прайс-листов.
-    """
     price_lists = PriceService.get_all()
 
     data = []
@@ -31,25 +24,9 @@ def list_price_lists():
 
     return jsonify(data)
 
-
-# ----------------------------------------------------------------------
-# 2. Создание прайса
-# ----------------------------------------------------------------------
 @prices_bp.route("/", methods=["POST"])
 def create_price_list():
-    """
-    Создать новый прайс-лист.
-
-    JSON:
-    {
-      "name": "Прайс Апрель 2025",
-      "description": "Спецусловия"
-    }
-
-    При создании:
-    - Прайс создаётся
-    - В него автоматически добавляются ВСЕ товары из каталога (PriceListItem)
-    """
+    
     data = request.get_json() or {}
     name = data.get("name")
     description = data.get("description", "")
@@ -66,14 +43,10 @@ def create_price_list():
     }), 201
 
 
-# ----------------------------------------------------------------------
-# 3. Получение одного прайс-листа с позициями
-# ----------------------------------------------------------------------
+
 @prices_bp.route("/<int:pl_id>", methods=["GET"])
 def get_price_list(pl_id):
-    """
-    Получить один прайс-лист + все его позиции.
-    """
+    
     pl = PriceService.get_by_id(pl_id)
     if not pl:
         return jsonify({"error": "not found"}), 404
@@ -94,20 +67,10 @@ def get_price_list(pl_id):
     })
 
 
-# ----------------------------------------------------------------------
-# 4. Редактирование прайса (название/описание)
-# ----------------------------------------------------------------------
+
 @prices_bp.route("/<int:pl_id>", methods=["PUT"])
 def update_price_list(pl_id):
-    """
-    Обновить название и/или описание прайс-листа.
-
-    JSON:
-    {
-      "name": "Новое имя",
-      "description": "Новое описание"
-    }
-    """
+    
     data = request.get_json() or {}
     name = data.get("name")
     description = data.get("description")
@@ -128,14 +91,10 @@ def update_price_list(pl_id):
     })
 
 
-# ----------------------------------------------------------------------
-# 5. Удаление прайс-листа
-# ----------------------------------------------------------------------
+
 @prices_bp.route("/<int:pl_id>", methods=["DELETE"])
 def delete_price_list(pl_id):
-    """
-    Удалить прайс-лист и все его позиции.
-    """
+    
     ok = PriceService.delete(pl_id)
     if not ok:
         return jsonify({"error": "not found"}), 404
@@ -143,19 +102,10 @@ def delete_price_list(pl_id):
     return jsonify({"status": "deleted"})
 
 
-# ----------------------------------------------------------------------
-# 6. Копирование прайс-листа
-# ----------------------------------------------------------------------
+
 @prices_bp.route("/<int:pl_id>/copy", methods=["POST"])
 def copy_price_list(pl_id):
-    """
-    Копировать прайс-лист со всеми позициями.
-
-    JSON (необязательно):
-    {
-      "name": "Новое имя прайса"
-    }
-    """
+    
     data = request.get_json() or {}
     new_name = data.get("name")
 
@@ -170,16 +120,10 @@ def copy_price_list(pl_id):
     }), 201
 
 
-# ----------------------------------------------------------------------
-# 7. Получить цену товара по прайсу
-# ----------------------------------------------------------------------
+
 @prices_bp.route("/<int:pl_id>/price", methods=["GET"])
 def get_product_price(pl_id):
-    """
-    Вернуть цену товара в рамках конкретного прайс-листа.
-
-    /api/prices/<id>/price?product_id=123
-    """
+    
     product_id = request.args.get("product_id")
     if not product_id:
         return jsonify({"error": "product_id is required"}), 400
@@ -192,19 +136,10 @@ def get_product_price(pl_id):
     })
 
 
-# ----------------------------------------------------------------------
-# 8. Редактирование цены конкретного товара в прайсе
-# ----------------------------------------------------------------------
+
 @prices_bp.route("/<int:pl_id>/items/<product_id>", methods=["PUT"])
 def update_price_item(pl_id, product_id):
-    """
-    Обновить цену конкретного товара в конкретном прайсе.
-
-    JSON:
-    {
-      "price": 12345.67
-    }
-    """
+    
     data = request.get_json() or {}
     if "price" not in data:
         return jsonify({"error": "price is required"}), 400
@@ -217,7 +152,6 @@ def update_price_item(pl_id, product_id):
     ).first()
 
     if not item:
-        # Если записи нет — создадим (на случай, если расхождение с ТЗ/данными)
         item = PriceListItem(
             price_list_id=pl_id,
             product_id=product_id,
