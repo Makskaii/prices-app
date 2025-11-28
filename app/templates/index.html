@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Прайс-листы CRM</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <script src="//api.bitrix24.com/api/v1/"></script>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 16px;
+      background: #f5f7f9;
+    }
+
+    .app-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 0 0 1px #e1e5ea;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 3fr 1.1fr;
+      gap: 16px;
+    }
+
+    .products-table-wrapper {
+      overflow: auto;
+      border: 1px solid #e1e5ea;
+      border-radius: 6px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    thead {
+      background: #f7f8fa;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    th, td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #eef1f4;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    tr:nth-child(even) tbody {
+      background: #fafbfc;
+    }
+
+    tr.selected {
+      background-color: #e6f4ff;
+    }
+
+    select, input[type="number"], input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 4px 6px;
+      font-size: 13px;
+    }
+
+    input[type="checkbox"] {
+      transform: scale(1.1);
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      gap: 8px;
+    }
+
+    .toolbar-left, .toolbar-right {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn {
+      padding: 6px 10px;
+      border-radius: 4px;
+      border: 1px solid #c2cad4;
+      background: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .btn-primary {
+      background: #3bc8f5;
+      border-color: #0bb1e5;
+      color: #fff;
+    }
+
+    .btn-danger {
+      background: #ff5752;
+      border-color: #ff3b30;
+      color: #fff;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .summary-card {
+      border: 1px solid #e1e5ea;
+      border-radius: 6px;
+      padding: 12px;
+      background: #fafbfc;
+      font-size: 13px;
+      height: fit-content;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .summary-row.total {
+      font-weight: 600;
+      border-top: 1px solid #dde2ea;
+      padding-top: 6px;
+      margin-top: 6px;
+    }
+
+    .footer-buttons {
+      margin-top: 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .footer-buttons-left,
+    .footer-buttons-right {
+      display: flex;
+      gap: 8px;
+    }
+
+    .tag {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: #eef1f4;
+      color: #4a5563;
+    }
+
+    .error-banner {
+      background: #ffe8e6;
+      border: 1px solid #ffb4aa;
+      color: #9b1c1c;
+      padding: 6px 8px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <div>
+      <div id="error-banner" class="error-banner"></div>
+
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <button class="btn" id="btn-add-row">+ Добавить строку</button>
+          <button class="btn btn-danger" id="btn-delete-selected" disabled>Удалить выбранные</button>
+        </div>
+        <div class="toolbar-right">
+          <span class="tag" id="tag-deal-info">Сделка: неизвестно</span>
+        </div>
+      </div>
+
+      <div class="products-table-wrapper">
+        <table id="lines-table">
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="select-all"></th>
+              <th>Товар</th>
+              <th>Прайс-лист</th>
+              <th>Цена</th>
+              <th>Кол-во</th>
+              <th>Скидка, %</th>
+              <th>НДС, %</th>
+              <th>Итого</th>
+            </tr>
+          </thead>
+          <tbody id="lines-tbody">
+          </tbody>
+        </table>
+      </div>
+
+      <div class="footer-buttons">
+        <div class="footer-buttons-left">
+          <button class="btn" id="btn-recalc-selected">Пересчитать выбранные</button>
+        </div>
+        <div class="footer-buttons-right">
+          <button class="btn" id="btn-manage-prices">Управление прайсами</button>
+          <button class="btn" id="btn-cancel">Отмена</button>
+          <button class="btn btn-primary" id="btn-save">Сохранить</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="summary-card">
+        <div class="summary-row">
+          <span>Сумма без скидки:</span>
+          <span id="sum-subtotal">0.00</span>
+        </div>
+        <div class="summary-row">
+          <span>Скидка:</span>
+          <span id="sum-discount">0.00</span>
+        </div>
+        <div class="summary-row">
+          <span>НДС:</span>
+          <span id="sum-vat">0.00</span>
+        </div>
+        <div class="summary-row total">
+          <span>Итого:</span>
+          <span id="sum-total">0.00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    
+    let PRODUCTS = [];
+    let PRICE_LISTS = [];
+    let lines = []; 
+
+    const VAT_RATES = [0, 10, 20]; // можно расширить под твой НДС
+
+    const apiBase = ""; // тот же домен/порт, где крутится Flask
+
+    
+    function formatMoney(value) {
+      return (value || 0).toFixed(2);
+    }
+
+    function showError(message) {
+      const banner = document.getElementById("error-banner");
+      banner.textContent = message;
+      banner.style.display = "block";
+    }
+
+    function clearError() {
+      const banner = document.getElementById("error-banner");
+      banner.textContent = "";
+      banner.style.display = "none";
+    }
+
+    
+    function createEmptyLine() {
+      return {
+        id: Date.now().toString() + Math.random().toString(16).slice(2),
+        productId: null,
+        priceListId: PRICE_LISTS.length ? PRICE_LISTS[0].id : null,
+        price: 0,
+        quantity: 1,
+        discountPercent: 0,
+        vatPercent: VAT_RATES[0],
+        subtotal: 0,
+        discountAmount: 0,
+        vatAmount: 0,
+        total: 0,
+        selected: false,
+      };
+    }
+
+    function recalcLine(line) {
+      const price = Number(line.price) || 0;
+      const qty = Number(line.quantity) || 0;
+      const discountPercent = Number(line.discountPercent) || 0;
+      const vatPercent = Number(line.vatPercent) || 0;
+
+      const base = price * qty;
+      const discountAmount = base * (discountPercent / 100);
+      const subtotal = base;
+      const vatAmount = (base - discountAmount) * (vatPercent / 100);
+      const total = base - discountAmount + vatAmount;
+
+      line.subtotal = subtotal;
+      line.discountAmount = discountAmount;
+      line.vatAmount = vatAmount;
+      line.total = total;
+    }
+
+    function recalcAll() {
+      lines.forEach(recalcLine);
+      updateSummary();
+      renderLines();
+    }
+
+    function updateSummary() {
+      let sumSubtotal = 0;
+      let sumDiscount = 0;
+      let sumVat = 0;
+      let sumTotal = 0;
+
+      lines.forEach(l => {
+        sumSubtotal += l.subtotal;
+        sumDiscount += l.discountAmount;
+        sumVat += l.vatAmount;
+        sumTotal += l.total;
+      });
+
+      document.getElementById("sum-subtotal").textContent = formatMoney(sumSubtotal);
+      document.getElementById("sum-discount").textContent = formatMoney(sumDiscount);
+      document.getElementById("sum-vat").textContent = formatMoney(sumVat);
+      document.getElementById("sum-total").textContent = formatMoney(sumTotal);
+    }
+
+    
+    function renderLines() {
+      const tbody = document.getElementById("lines-tbody");
+      tbody.innerHTML = "";
+
+      lines.forEach((line, index) => {
+        const tr = document.createElement("tr");
+        if (line.selected) {
+          tr.classList.add("selected");
+        }
+
+        // checkbox
+        const tdSelect = document.createElement("td");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = line.selected;
+        cb.addEventListener("change", () => {
+          line.selected = cb.checked;
+          renderLines();
+        });
+        tdSelect.appendChild(cb);
+        tr.appendChild(tdSelect);
+
+        // товар
+        const tdProduct = document.createElement("td");
+        const productSelect = document.createElement("select");
+        const optEmpty = document.createElement("option");
+        optEmpty.value = "";
+        optEmpty.textContent = "— выбрать товар —";
+        productSelect.appendChild(optEmpty);
+
+        PRODUCTS.forEach(p => {
+          const opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.name;
+          if (p.id === line.productId) opt.selected = true;
+          productSelect.appendChild(opt);
+        });
+
+        productSelect.addEventListener("change", () => {
+          line.productId = productSelect.value || null;
+          
+          line.price = 0;
+          recalcLine(line);
+          renderLines();
+        });
+        tdProduct.appendChild(productSelect);
+        tr.appendChild(tdProduct);
+
+        // прайс-лист
+        const tdPriceList = document.createElement("td");
+        const priceListSelect = document.createElement("select");
+
+        PRICE_LISTS.forEach(pl => {
+          const opt = document.createElement("option");
+          opt.value = pl.id;
+          opt.textContent = pl.name;
+          if (pl.id === line.priceListId) opt.selected = true;
+          priceListSelect.appendChild(opt);
+        });
+
+        priceListSelect.addEventListener("change", () => {
+          line.priceListId = Number(priceListSelect.value) || null;
+        });
+
+        tdPriceList.appendChild(priceListSelect);
+        tr.appendChild(tdPriceList);
+
+        // цена
+        const tdPrice = document.createElement("td");
+        const inputPrice = document.createElement("input");
+        inputPrice.type = "number";
+        inputPrice.step = "0.01";
+        inputPrice.value = line.price;
+        inputPrice.addEventListener("input", () => {
+          line.price = Number(inputPrice.value) || 0;
+          recalcLine(line);
+          updateSummary();
+        });
+        tdPrice.appendChild(inputPrice);
+        tr.appendChild(tdPrice);
+
+        // количество
+        const tdQty = document.createElement("td");
+        const inputQty = document.createElement("input");
+        inputQty.type = "number";
+        inputQty.min = "0";
+        inputQty.step = "1";
+        inputQty.value = line.quantity;
+        inputQty.addEventListener("input", () => {
+          line.quantity = Number(inputQty.value) || 0;
+          recalcLine(line);
+          updateSummary();
+        });
+        tdQty.appendChild(inputQty);
+        tr.appendChild(tdQty);
+
+        // скидка %
+        const tdDiscount = document.createElement("td");
+        const inputDiscount = document.createElement("input");
+        inputDiscount.type = "number";
+        inputDiscount.min = "0";
+        inputDiscount.max = "100";
+        inputDiscount.step = "1";
+        inputDiscount.value = line.discountPercent;
+        inputDiscount.addEventListener("input", () => {
+          line.discountPercent = Number(inputDiscount.value) || 0;
+          recalcLine(line);
+          updateSummary();
+        });
+        tdDiscount.appendChild(inputDiscount);
+        tr.appendChild(tdDiscount);
+
+        // НДС %
+        const tdVat = document.createElement("td");
+        const vatSelect = document.createElement("select");
+        VAT_RATES.forEach(rate => {
+          const opt = document.createElement("option");
+          opt.value = rate;
+          opt.textContent = rate + " %";
+          if (rate === line.vatPercent) opt.selected = true;
+          vatSelect.appendChild(opt);
+        });
+        vatSelect.addEventListener("change", () => {
+          line.vatPercent = Number(vatSelect.value) || 0;
+          recalcLine(line);
+          updateSummary();
+        });
+        tdVat.appendChild(vatSelect);
+        tr.appendChild(tdVat);
+
+        // итого
+        const tdTotal = document.createElement("td");
+        tdTotal.textContent = formatMoney(line.total);
+        tr.appendChild(tdTotal);
+
+        tbody.appendChild(tr);
+      });
+
+      // кнопка удалить выбранные
+      const anySelected = lines.some(l => l.selected);
+      document.getElementById("btn-delete-selected").disabled = !anySelected;
+    }
+
+    
+    async function fetchProducts() {
+      const res = await fetch(apiBase + "/api/products/");
+      if (!res.ok) throw new Error("Ошибка загрузки товаров");
+      PRODUCTS = await res.json();
+    }
+
+    async function fetchPriceLists() {
+      const res = await fetch(apiBase + "/api/prices/");
+      if (!res.ok) throw new Error("Ошибка загрузки прайсов");
+      PRICE_LISTS = await res.json();
+    }
+
+    async function fetchPriceForLine(line) {
+      if (!line.productId || !line.priceListId) return;
+      const url = `${apiBase}/api/prices/${line.priceListId}/price?product_id=${encodeURIComponent(line.productId)}`;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.price != null) {
+        line.price = Number(data.price) || 0;
+        recalcLine(line);
+      }
+    }
+
+    
+    async function initApp() {
+      clearError();
+      try {
+        await Promise.all([fetchProducts(), fetchPriceLists()]);
+
+        // хотя бы одна строка по умолчанию
+        if (lines.length === 0) {
+          lines.push(createEmptyLine());
+          recalcAll();
+        } else {
+          recalcAll();
+        }
+        renderLines();
+      } catch (e) {
+        console.error(e);
+        showError("Ошибка инициализации: " + e.message);
+      }
+    }
+
+    
+    document.addEventListener("DOMContentLoaded", () => {
+      
+      document.getElementById("btn-add-row").addEventListener("click", () => {
+        const line = createEmptyLine();
+        lines.push(line);
+        recalcAll();
+        renderLines();
+      });
+
+      
+      document.getElementById("btn-delete-selected").addEventListener("click", () => {
+        lines = lines.filter(l => !l.selected);
+        if (lines.length === 0) {
+          lines.push(createEmptyLine());
+        }
+        recalcAll();
+        renderLines();
+      });
+
+      
+      document.getElementById("select-all").addEventListener("change", (e) => {
+        const checked = e.target.checked;
+        lines.forEach(l => l.selected = checked);
+        renderLines();
+      });
+
+      
+      document.getElementById("btn-recalc-selected").addEventListener("click", async () => {
+        for (const line of lines) {
+          if (!line.selected) continue;
+          await fetchPriceForLine(line);
+        }
+        recalcAll();
+        renderLines();
+      });
+
+      
+      document.getElementById("btn-manage-prices").addEventListener("click", () => {
+        alert("Управление прайсами: здесь будет модальное окно с CRUD по прайсам.");
+      });
+
+      
+      document.getElementById("btn-cancel").addEventListener("click", () => {
+        if (window.BX24 && BX24.closeApplication) {
+          BX24.closeApplication();
+        } else {
+          alert("Отмена (в режиме разработки просто закрывай вкладку)");
+        }
+      });
+
+      
+      document.getElementById("btn-save").addEventListener("click", () => {
+        console.log("Строки для сохранения в CRM:", lines);
+        alert("Пока сохранение не реализовано. Следующий шаг — связать с crm.deal.productrows.set");
+      });
+
+      // Попробуем получить контекст сделки в Bitrix
+      if (window.BX24) {
+        BX24.ready(function() {
+          BX24.init(function() {
+            BX24.getAuth(() => {}); // просто для инициализации
+            BX24.callMethod("placement.getData", {}, function(res) {
+              const data = res.data();
+              const dealId = data?.ID || data?.entityId || "неизвестно";
+              document.getElementById("tag-deal-info").textContent = "Сделка: " + dealId;
+            });
+          });
+        });
+      }
+
+      // старт приложения
+      initApp();
+    });
+  </script>
+</body>
+</html>
