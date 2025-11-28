@@ -6,22 +6,13 @@ products_bp = Blueprint("products_bp", __name__)
 
 @products_bp.route("/", methods=["GET"])
 def list_products():
-    """
-    Получить список товаров из локальной БД.
-
-    Поддерживает параметр:
-    - q: поиск по имени
-    """
+    
     q = request.args.get("q", "").strip()
-
     products = ProductService.get_all_products()
 
     if q:
         q_lower = q.lower()
-        products = [
-            p for p in products
-            if p.name and q_lower in p.name.lower()
-        ]
+        products = [p for p in products if p.name and q_lower in p.name.lower()]
 
     return jsonify([
         {
@@ -37,8 +28,6 @@ def list_products():
 
 @products_bp.route("/sync", methods=["POST"])
 def sync_products():
-    """
-    Синхронизировать товары с Bitrix24.
-    """
+    
     result = ProductService.sync_products_from_bitrix()
     return jsonify(result)
