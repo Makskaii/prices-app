@@ -3,30 +3,44 @@ import requests
 
 BITRIX_WEBHOOK = os.getenv("BITRIX_WEBHOOK_URL")
 
-def bitrix_call(method, params=None):
+
+def bitrix_call(method: str, params: dict | None = None):
+    
+    if not BITRIX_WEBHOOK:
+        raise RuntimeError("BITRIX_WEBHOOK_URL is not set in environment")
+
     url = f"{BITRIX_WEBHOOK}/{method}"
     response = requests.post(url, json=params or {})
+    response.raise_for_status()
+
     data = response.json()
 
     if "error" in data:
-        raise Exception(f"Bitrix error: {data['error_description']}")
+        
+        raise Exception(f"Bitrix error: {data.get('error_description') or data['error']}")
 
     return data.get("result")
 
 
-def bitrix_call_paginated(method, params=None):
+def bitrix_call_paginated(method: str, params: dict | None = None):
     
-    params = params or {}
+    params = params.copy() if params else {}
     params["start"] = 0
 
-    all_items = []
+    all_items: list[dict] = []
 
     while True:
         chunk = bitrix_call(method, params)
-        items = chunk.get("items", chunk)  # Bitrix иногда возвращает {items: []}
+
+        if isinstance(chunk, dict):
+            items = chunk.get("items", [])
+            next_start = chunk.get("next")
+        else:
+            items = chunk
+            next_start = None
+
         all_items.extend(items)
 
-        next_start = chunk.get("next")
         if next_start is None:
             break
 
