@@ -5,32 +5,118 @@
   <title>Прайс-листы CRM</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
+  <!-- Bitrix JS SDK (в бою внутри виджета) -->
   <script src="//api.bitrix24.com/api/v1/"></script>
 
   <style>
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      margin: 0;
-      padding: 16px;
-      background: #f5f7f9;
+    :root {
+      --bx-blue: #3bc8f5;
+      --bx-blue-dark: #0bb1e5;
+      --bx-green: #bbed21;
+      --bx-green-dark: #9ad215;
+      --bx-border: #dce0e4;
+      --bx-bg: #f5f7f9;
+      --bx-text: #333;
+      --bx-muted: #888;
     }
 
-    .app-container {
-      max-width: 1200px;
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 12px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      background: var(--bx-bg);
+      color: var(--bx-text);
+    }
+
+    .app-root {
+      max-width: 1360px;
       margin: 0 auto;
       background: #fff;
       border-radius: 8px;
-      box-shadow: 0 0 0 1px #e1e5ea;
+      border: 1px solid var(--bx-border);
+      box-shadow: 0 1px 3px rgba(15, 35, 52, 0.08);
       padding: 16px;
       display: grid;
-      grid-template-columns: 3fr 1.1fr;
+      grid-template-columns: minmax(0, 3fr) 260px;
       gap: 16px;
     }
 
+    .left-block { min-width: 0; }
+    .right-block { min-width: 0; }
+
+    .toolbar-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .toolbar-top-left,
+    .toolbar-top-right {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn {
+      padding: 6px 12px;
+      border-radius: 4px;
+      border: 1px solid var(--bx-border);
+      background: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+      transition: background 0.15s, box-shadow 0.15s, transform 0.05s;
+    }
+
+    .btn:hover:not(:disabled) { background: #f3f6fb; }
+    .btn:active:not(:disabled) {
+      transform: translateY(1px);
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.12);
+    }
+
+    .btn-primary {
+      background: var(--bx-blue);
+      border-color: var(--bx-blue-dark);
+      color: #fff;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--bx-blue-dark); }
+
+    .btn-danger {
+      background: #ff726c;
+      border-color: #ff5b54;
+      color: #fff;
+    }
+    .btn-danger:hover:not(:disabled) { background: #ff5b54; }
+
+    .btn-success {
+      background: var(--bx-green);
+      border-color: var(--bx-green-dark);
+      color: #000;
+      font-weight: 600;
+    }
+    .btn-success:hover:not(:disabled) { background: var(--bx-green-dark); }
+
+    .btn:disabled { opacity: 0.5; cursor: default; }
+
+    .tag {
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #eef2f5;
+      font-size: 11px;
+      color: var(--bx-muted);
+    }
+
     .products-table-wrapper {
-      overflow: auto;
-      border: 1px solid #e1e5ea;
+      border: 1px solid var(--bx-border);
       border-radius: 6px;
+      overflow: hidden;
     }
 
     table {
@@ -39,123 +125,67 @@
       font-size: 13px;
     }
 
-    thead {
-      background: #f7f8fa;
-      position: sticky;
-      top: 0;
-      z-index: 1;
-    }
+    thead { background: #f4f7fb; }
 
     th, td {
       padding: 6px 8px;
       border-bottom: 1px solid #eef1f4;
       text-align: left;
       white-space: nowrap;
+      vertical-align: middle;
     }
 
-    tr:nth-child(even) tbody {
-      background: #fafbfc;
+    th { font-weight: 600; color: #555; }
+
+    tbody tr:nth-child(even) { background: #fbfcfe; }
+    tbody tr.selected { background: #e6f4ff; }
+
+    .col-index { width: 26px; text-align: right; color: var(--bx-muted); }
+    .col-checkbox { width: 26px; text-align: center; }
+    .col-product { min-width: 280px; }
+    .col-price-list { width: 140px; }
+    .col-price { width: 120px; }
+    .col-qty,
+    .col-discount,
+    .col-vat,
+    .col-total { width: 90px; }
+
+    input[type="checkbox"] {
+      transform: scale(1.1);
+      cursor: pointer;
     }
 
-    tr.selected {
-      background-color: #e6f4ff;
-    }
-
-    select, input[type="number"], input[type="text"] {
+    select,
+    input[type="number"],
+    input[type="text"] {
       width: 100%;
       box-sizing: border-box;
       padding: 4px 6px;
       font-size: 13px;
-    }
-
-    input[type="checkbox"] {
-      transform: scale(1.1);
-    }
-
-    .toolbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-      gap: 8px;
-    }
-
-    .toolbar-left, .toolbar-right {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-
-    .btn {
-      padding: 6px 10px;
       border-radius: 4px;
-      border: 1px solid #c2cad4;
+      border: 1px solid #c5ced8;
       background: #fff;
-      font-size: 13px;
-      cursor: pointer;
-      display: inline-flex;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    select:focus,
+    input[type="number"]:focus,
+    input[type="text"]:focus {
+      border-color: var(--bx-blue-dark);
+      box-shadow: 0 0 0 2px rgba(59, 200, 245, 0.2);
+    }
+
+    .input-qty-wrapper {
+      display: flex;
       align-items: center;
       gap: 4px;
     }
 
-    .btn-primary {
-      background: #3bc8f5;
-      border-color: #0bb1e5;
-      color: #fff;
-    }
-
-    .btn-danger {
-      background: #ff5752;
-      border-color: #ff3b30;
-      color: #fff;
-    }
-
-    .btn:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-
-    .summary-card {
-      border: 1px solid #e1e5ea;
-      border-radius: 6px;
-      padding: 12px;
-      background: #fafbfc;
-      font-size: 13px;
-      height: fit-content;
-    }
-
-    .summary-row {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 4px;
-    }
-
-    .summary-row.total {
-      font-weight: 600;
-      border-top: 1px solid #dde2ea;
-      padding-top: 6px;
-      margin-top: 6px;
-    }
-
-    .footer-buttons {
-      margin-top: 12px;
-      display: flex;
-      justify-content: space-between;
-      gap: 8px;
-    }
-
-    .footer-buttons-left,
-    .footer-buttons-right {
-      display: flex;
-      gap: 8px;
-    }
-
-    .tag {
+    .unit-label {
       font-size: 11px;
-      padding: 2px 6px;
-      border-radius: 999px;
-      background: #eef1f4;
-      color: #4a5563;
+      color: var(--bx-muted);
+      white-space: nowrap;
     }
 
     .error-banner {
@@ -168,89 +198,221 @@
       font-size: 12px;
       display: none;
     }
+
+    .footer-buttons {
+      margin-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .footer-left,
+    .footer-right {
+      display: flex;
+      gap: 8px;
+    }
+
+    .summary-card {
+      border: 1px solid var(--bx-border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      background: #fafbfc;
+      font-size: 13px;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      color: #555;
+    }
+
+    .summary-row.total {
+      font-weight: 600;
+      border-top: 1px solid #dde2ea;
+      padding-top: 6px;
+      margin-top: 6px;
+      color: #000;
+    }
+
+    .summary-label { margin-right: 12px; }
+    .summary-value { text-align: right; }
+
+    /* ---------- Выпадающий список товаров ---------- */
+    .product-dropdown {
+      position: fixed;
+      z-index: 9999;
+      background: #fff;
+      border-radius: 4px;
+      border: 1px solid #c5ced8;
+      box-shadow: 0 4px 10px rgb(255, 255, 255);
+      max-height: 600px;
+      min-width: 320px;  
+      display: none;
+      overflow: hidden;
+      font-size: 13px;
+    }
+
+    .product-dropdown.visible { display: block; }
+
+    .product-dropdown-search {
+      padding: 6px 8px;
+      border-bottom: 1px solid #eef1f4;
+      background: #fafbff;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    .product-dropdown-search input {
+      width: 100%;
+      padding: 4px 6px;
+      font-size: 13px;
+      border-radius: 4px;
+      border: 1px solid #c5ced8;
+    }
+
+    .product-dropdown-list {
+      max-height: 500px;
+      overflow: auto;
+    }
+
+    .product-row {
+      padding: 6px 8px;
+      border-bottom: 1px solid #f1f3f6;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .product-row:hover { background: #f3f7ff; }
+
+    .product-row-name { font-size: 13px; }
+    .product-row-meta {
+      font-size: 11px;
+      color: var(--bx-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
   </style>
 </head>
 <body>
-  <div class="app-container">
-    <div>
+  <div class="app-root">
+    <!-- ЛЕВАЯ ЧАСТЬ: таблица товаров -->
+    <div class="left-block">
       <div id="error-banner" class="error-banner"></div>
 
-      <div class="toolbar">
-        <div class="toolbar-left">
-          <button class="btn" id="btn-add-row">+ Добавить строку</button>
+      <div class="toolbar-top">
+        <div class="toolbar-top-left">
+          <button class="btn btn-primary" id="btn-add-row">+ Добавить товар</button>
           <button class="btn btn-danger" id="btn-delete-selected" disabled>Удалить выбранные</button>
         </div>
-        <div class="toolbar-right">
+        <div class="toolbar-top-right">
           <span class="tag" id="tag-deal-info">Сделка: неизвестно</span>
         </div>
       </div>
 
       <div class="products-table-wrapper">
-        <table id="lines-table">
+        <table>
           <thead>
             <tr>
-              <th><input type="checkbox" id="select-all"></th>
-              <th>Товар</th>
-              <th>Прайс-лист</th>
-              <th>Цена</th>
-              <th>Кол-во</th>
-              <th>Скидка, %</th>
-              <th>НДС, %</th>
-              <th>Итого</th>
+              <th class="col-index">#</th>
+              <th class="col-checkbox">
+                <input type="checkbox" id="cb-select-all">
+              </th>
+              <th class="col-product">Товар</th>
+              <th class="col-price-list">Прайс-лист</th>
+              <th class="col-price">Цена</th>
+              <th class="col-qty">Кол-во</th>
+              <th class="col-discount">Скидка, %</th>
+              <th class="col-vat">НДС, %</th>
+              <th class="col-total">Итого</th>
             </tr>
           </thead>
-          <tbody id="lines-tbody">
-          </tbody>
+          <tbody id="lines-tbody"></tbody>
         </table>
       </div>
 
       <div class="footer-buttons">
-        <div class="footer-buttons-left">
+        <div class="footer-left">
           <button class="btn" id="btn-recalc-selected">Пересчитать выбранные</button>
         </div>
-        <div class="footer-buttons-right">
+        <div class="footer-right">
           <button class="btn" id="btn-manage-prices">Управление прайсами</button>
           <button class="btn" id="btn-cancel">Отмена</button>
-          <button class="btn btn-primary" id="btn-save">Сохранить</button>
+          <button class="btn btn-success" id="btn-save">Сохранить</button>
         </div>
       </div>
     </div>
 
-    <div>
+    <!-- ПРАВАЯ ЧАСТЬ: суммы -->
+    <div class="right-block">
       <div class="summary-card">
         <div class="summary-row">
-          <span>Сумма без скидки:</span>
-          <span id="sum-subtotal">0.00</span>
+          <span class="summary-label">Сумма без скидки и налогов:</span>
+          <span class="summary-value" id="sum-base">0.00</span>
         </div>
         <div class="summary-row">
-          <span>Скидка:</span>
-          <span id="sum-discount">0.00</span>
+          <span class="summary-label">Сумма скидки:</span>
+          <span class="summary-value" id="sum-discount">0.00</span>
         </div>
         <div class="summary-row">
-          <span>НДС:</span>
-          <span id="sum-vat">0.00</span>
+          <span class="summary-label">Сумма без налога:</span>
+          <span class="summary-value" id="sum-no-vat">0.00</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Сумма налога:</span>
+          <span class="summary-value" id="sum-vat">0.00</span>
         </div>
         <div class="summary-row total">
-          <span>Итого:</span>
-          <span id="sum-total">0.00</span>
+          <span class="summary-label">Общая сумма:</span>
+          <span class="summary-value" id="sum-total">0.00</span>
         </div>
       </div>
     </div>
   </div>
 
+  <!-- Наш кастомный дропдаун выбора товара -->
+  <div id="product-dropdown" class="product-dropdown">
+    <div class="product-dropdown-search">
+      <input type="text" id="product-search-input" placeholder="Поиск товара..." />
+    </div>
+    <div id="product-dropdown-list" class="product-dropdown-list"></div>
+  </div>
+
   <script>
-    
+    // ------------------ Глобальные данные ------------------
     let PRODUCTS = [];
     let PRICE_LISTS = [];
-    let lines = []; 
+    let lines = [];
 
-    const VAT_RATES = [0, 10, 20]; // можно расширить под твой НДС
-
+    const VAT_RATES = [0, 10, 20];
     const apiBase = ""; // тот же домен/порт, где крутится Flask
 
-    
+    // для дропдауна
+    let currentProductInput = null;
+    let currentProductLine = null;
+    let productDropdownEl = null;
+    let productDropdownListEl = null;
+    let productSearchInputEl = null;
+
+    // ------------------ Утилиты ------------------
     function formatMoney(value) {
-      return (value || 0).toFixed(2);
+      let num = Number(value);
+      if (isNaN(num)) num = 0;
+
+      num = num.toFixed(2);
+
+      let parts = num.split(".");
+      let intPart = parts[0];
+      let decPart = parts[1];
+
+      intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+
+      return `${intPart},${decPart}`;
     }
 
     function showError(message) {
@@ -265,17 +427,18 @@
       banner.style.display = "none";
     }
 
-    
+    // ------------------ Модель строки ------------------
     function createEmptyLine() {
       return {
         id: Date.now().toString() + Math.random().toString(16).slice(2),
         productId: null,
+        productName: "",
         priceListId: PRICE_LISTS.length ? PRICE_LISTS[0].id : null,
         price: 0,
         quantity: 1,
         discountPercent: 0,
-        vatPercent: VAT_RATES[0],
-        subtotal: 0,
+        vatPercent: 0,
+        base: 0,
         discountAmount: 0,
         vatAmount: 0,
         total: 0,
@@ -291,11 +454,11 @@
 
       const base = price * qty;
       const discountAmount = base * (discountPercent / 100);
-      const subtotal = base;
-      const vatAmount = (base - discountAmount) * (vatPercent / 100);
-      const total = base - discountAmount + vatAmount;
+      const baseAfterDiscount = base - discountAmount;
+      const vatAmount = baseAfterDiscount * (vatPercent / 100);
+      const total = baseAfterDiscount + vatAmount;
 
-      line.subtotal = subtotal;
+      line.base = base;
       line.discountAmount = discountAmount;
       line.vatAmount = vatAmount;
       line.total = total;
@@ -304,41 +467,176 @@
     function recalcAll() {
       lines.forEach(recalcLine);
       updateSummary();
-      renderLines();
     }
 
     function updateSummary() {
-      let sumSubtotal = 0;
+      let sumBase = 0;
       let sumDiscount = 0;
+      let sumNoVat = 0;
       let sumVat = 0;
       let sumTotal = 0;
 
       lines.forEach(l => {
-        sumSubtotal += l.subtotal;
+        sumBase += l.base;
         sumDiscount += l.discountAmount;
+        const noVat = l.base - l.discountAmount;
+        sumNoVat += noVat;
         sumVat += l.vatAmount;
         sumTotal += l.total;
       });
 
-      document.getElementById("sum-subtotal").textContent = formatMoney(sumSubtotal);
+      document.getElementById("sum-base").textContent = formatMoney(sumBase);
       document.getElementById("sum-discount").textContent = formatMoney(sumDiscount);
+      document.getElementById("sum-no-vat").textContent = formatMoney(sumNoVat);
       document.getElementById("sum-vat").textContent = formatMoney(sumVat);
       document.getElementById("sum-total").textContent = formatMoney(sumTotal);
     }
 
-    
+    // ------------------ API ------------------
+    async function fetchProducts() {
+      const res = await fetch(apiBase + "/api/products/");
+      if (!res.ok) throw new Error("Ошибка загрузки товаров");
+      const data = await res.json() || [];
+
+      // дедупликация только по ID (лицензия/поддержка с одинаковым именем остаются разными)
+      const map = new Map();
+      for (const p of data) {
+        if (!p.id) continue;
+        if (!map.has(p.id)) map.set(p.id, p);
+      }
+      PRODUCTS = Array.from(map.values()).sort((a, b) =>
+        (a.name || "").localeCompare(b.name || "", "ru", { sensitivity: "base" })
+      );
+    }
+
+    async function fetchPriceLists() {
+      const res = await fetch(apiBase + "/api/prices/");
+      if (!res.ok) throw new Error("Ошибка загрузки прайсов");
+      PRICE_LISTS = await res.json() || [];
+    }
+
+    async function fetchPriceForLine(line) {
+      if (!line.productId || !line.priceListId) return;
+      const url = `${apiBase}/api/prices/${line.priceListId}/price?product_id=${encodeURIComponent(line.productId)}`;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.price != null) {
+        line.price = Number(data.price) || 0;
+      }
+    }
+
+    async function autoUpdatePriceAndRecalc(line) {
+      await fetchPriceForLine(line);
+      recalcLine(line);
+      updateSummary();
+      renderLines();
+    }
+
+    // ------------------ Дропдаун товаров ------------------
+    function openProductDropdown(inputEl, line) {
+      currentProductInput = inputEl;
+      currentProductLine = line;
+
+      if (!productDropdownEl) return;
+
+      const rect = inputEl.getBoundingClientRect();
+      const top = rect.bottom + window.scrollY;
+      const left = rect.left + window.scrollX;
+
+      const extraWidth = 60;
+      productDropdownEl.style.width = (rect.width + extraWidth) + "px";
+      productDropdownEl.style.left = left + "px";
+      productDropdownEl.style.top = top + "px";
+
+      productSearchInputEl.value = "";
+      renderProductDropdownList("");
+      
+      productDropdownEl.style.display = "block";
+      productDropdownEl.classList.add("visible");
+      setTimeout(() => productSearchInputEl.focus(), 10);
+    }
+
+
+    function closeProductDropdown() {
+      if (!productDropdownEl) return;
+
+        productDropdownEl.classList.remove("visible");
+        productDropdownEl.style.display = "none";
+
+        currentProductLine = null;
+        currentProductInput = null;
+        }
+
+    function renderProductDropdownList(filterText = "") {
+      if (!productDropdownListEl) return;
+      productDropdownListEl.innerHTML = "";
+
+      const q = filterText.toLowerCase().trim();
+
+      const filtered = PRODUCTS.filter(p => {
+        if (!q) return true;
+        const name = (p.name || "").toLowerCase();
+        const desc = (p.description || "").toLowerCase();
+        return name.includes(q) || desc.includes(q);
+      });
+
+      filtered.forEach(p => {
+        const row = document.createElement("div");
+        row.className = "product-row";
+
+        const nameEl = document.createElement("div");
+        nameEl.className = "product-row-name";
+        nameEl.textContent = p.name || "(без названия)";
+
+        const metaEl = document.createElement("div");
+        metaEl.className = "product-row-meta";
+        const price = Number(p.price) || 0;
+        const currency = p.currency_id || "RUB";
+        const priceText = price ? `${formatMoney(price)} ${currency}` : "цена не указана";
+        const desc = (p.description || "").replace(/\s+/g, " ");
+        metaEl.textContent = desc ? `${priceText} • ${desc}` : priceText;
+
+        row.appendChild(nameEl);
+        row.appendChild(metaEl);
+
+        row.addEventListener("click", async (e) => {
+          e.stopPropagation();
+            if (!currentProductLine || !currentProductInput) return;
+
+            currentProductLine.productId = p.id;
+            currentProductLine.productName = p.name || "";
+            currentProductInput.value = p.name || "";
+
+            const lineRef = currentProductLine;
+
+            closeProductDropdown();
+
+            await autoUpdatePriceAndRecalc(lineRef);
+        });
+
+        productDropdownListEl.appendChild(row);
+      });
+    }
+
+    // ------------------ Рендер таблицы ------------------
     function renderLines() {
       const tbody = document.getElementById("lines-tbody");
       tbody.innerHTML = "";
 
       lines.forEach((line, index) => {
         const tr = document.createElement("tr");
-        if (line.selected) {
-          tr.classList.add("selected");
-        }
+        if (line.selected) tr.classList.add("selected");
 
-        // checkbox
-        const tdSelect = document.createElement("td");
+        // №
+        const tdIndex = document.createElement("td");
+        tdIndex.className = "col-index";
+        tdIndex.textContent = index + 1;
+        tr.appendChild(tdIndex);
+
+        // чекбокс
+        const tdCheckbox = document.createElement("td");
+        tdCheckbox.className = "col-checkbox";
         const cb = document.createElement("input");
         cb.type = "checkbox";
         cb.checked = line.selected;
@@ -346,70 +644,93 @@
           line.selected = cb.checked;
           renderLines();
         });
-        tdSelect.appendChild(cb);
-        tr.appendChild(tdSelect);
+        tdCheckbox.appendChild(cb);
+        tr.appendChild(tdCheckbox);
 
-        // товар
+        // товар (input + наш дропдаун)
         const tdProduct = document.createElement("td");
-        const productSelect = document.createElement("select");
-        const optEmpty = document.createElement("option");
-        optEmpty.value = "";
-        optEmpty.textContent = "— выбрать товар —";
-        productSelect.appendChild(optEmpty);
+        tdProduct.className = "col-product";
+        const inputProduct = document.createElement("input");
+        inputProduct.type = "text";
+        inputProduct.placeholder = "— выбрать товар —";
+        inputProduct.value = line.productName || "";
 
-        PRODUCTS.forEach(p => {
-          const opt = document.createElement("option");
-          opt.value = p.id;
-          opt.textContent = p.name;
-          if (p.id === line.productId) opt.selected = true;
-          productSelect.appendChild(opt);
+        inputProduct.addEventListener("focus", () => {
+          openProductDropdown(inputProduct, line);
+        });
+        inputProduct.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openProductDropdown(inputProduct, line);
         });
 
-        productSelect.addEventListener("change", () => {
-          line.productId = productSelect.value || null;
-          
-          line.price = 0;
-          recalcLine(line);
-          renderLines();
+        // если пользователь вручную что-то написал и ушёл с поля — не трогаем id,
+        // он обновится только при выборе из списка
+        inputProduct.addEventListener("input", () => {
+          line.productName = inputProduct.value;
         });
-        tdProduct.appendChild(productSelect);
+
+        tdProduct.appendChild(inputProduct);
         tr.appendChild(tdProduct);
 
         // прайс-лист
         const tdPriceList = document.createElement("td");
-        const priceListSelect = document.createElement("select");
-
+        tdPriceList.className = "col-price-list";
+        const selectPriceList = document.createElement("select");
         PRICE_LISTS.forEach(pl => {
           const opt = document.createElement("option");
           opt.value = pl.id;
           opt.textContent = pl.name;
           if (pl.id === line.priceListId) opt.selected = true;
-          priceListSelect.appendChild(opt);
+          selectPriceList.appendChild(opt);
         });
-
-        priceListSelect.addEventListener("change", () => {
-          line.priceListId = Number(priceListSelect.value) || null;
+        selectPriceList.addEventListener("change", async () => {
+          line.priceListId = Number(selectPriceList.value) || null;
+          if (line.productId) {
+            await autoUpdatePriceAndRecalc(line);
+          }
         });
-
-        tdPriceList.appendChild(priceListSelect);
+        tdPriceList.appendChild(selectPriceList);
         tr.appendChild(tdPriceList);
 
         // цена
         const tdPrice = document.createElement("td");
+        tdPrice.className = "col-price";
         const inputPrice = document.createElement("input");
-        inputPrice.type = "number";
-        inputPrice.step = "0.01";
-        inputPrice.value = line.price;
-        inputPrice.addEventListener("input", () => {
-          line.price = Number(inputPrice.value) || 0;
+        inputPrice.type = "text";
+
+        inputPrice.step = "1";
+        inputPrice.value = formatMoney(line.price || 0);
+
+        inputPrice.addEventListener("focus", () => {
+          const num = Number(line.price) || 0;
+         
+          inputPrice.value = num.toString().replace(".", ",");
+        });
+
+        inputPrice.addEventListener("blur", () => {
+          let raw = inputPrice.value || "";
+
+          raw = raw.replace(/\s+/g, "").replace(",", ".");
+
+          let num = Number(raw);
+          if (isNaN(num)) num = 0;
+
+          line.price = num;
           recalcLine(line);
           updateSummary();
+
+          inputPrice.value = formatMoney(line.price);
+          tdTotal.textContent = formatMoney(line.total);
         });
+
         tdPrice.appendChild(inputPrice);
         tr.appendChild(tdPrice);
 
         // количество
         const tdQty = document.createElement("td");
+        tdQty.className = "col-qty";
+        const qtyWrapper = document.createElement("div");
+        qtyWrapper.className = "input-qty-wrapper";
         const inputQty = document.createElement("input");
         inputQty.type = "number";
         inputQty.min = "0";
@@ -419,12 +740,19 @@
           line.quantity = Number(inputQty.value) || 0;
           recalcLine(line);
           updateSummary();
+          tdTotal.textContent = formatMoney(line.total);
         });
-        tdQty.appendChild(inputQty);
+        const unitSpan = document.createElement("span");
+        unitSpan.className = "unit-label";
+        unitSpan.textContent = "шт";
+        qtyWrapper.appendChild(inputQty);
+        qtyWrapper.appendChild(unitSpan);
+        tdQty.appendChild(qtyWrapper);
         tr.appendChild(tdQty);
 
         // скидка %
         const tdDiscount = document.createElement("td");
+        tdDiscount.className = "col-discount";
         const inputDiscount = document.createElement("input");
         inputDiscount.type = "number";
         inputDiscount.min = "0";
@@ -435,73 +763,50 @@
           line.discountPercent = Number(inputDiscount.value) || 0;
           recalcLine(line);
           updateSummary();
+          tdTotal.textContent = formatMoney(line.total);
         });
         tdDiscount.appendChild(inputDiscount);
         tr.appendChild(tdDiscount);
 
         // НДС %
         const tdVat = document.createElement("td");
-        const vatSelect = document.createElement("select");
+        tdVat.className = "col-vat";
+        const selectVat = document.createElement("select");
         VAT_RATES.forEach(rate => {
           const opt = document.createElement("option");
           opt.value = rate;
-          opt.textContent = rate + " %";
+          opt.textContent = rate === 0 ? "0 %" : rate + " %";
           if (rate === line.vatPercent) opt.selected = true;
-          vatSelect.appendChild(opt);
+          selectVat.appendChild(opt);
         });
-        vatSelect.addEventListener("change", () => {
-          line.vatPercent = Number(vatSelect.value) || 0;
+        selectVat.addEventListener("change", () => {
+          line.vatPercent = Number(selectVat.value) || 0;
           recalcLine(line);
           updateSummary();
+          tdTotal.textContent = formatMoney(line.total);
         });
-        tdVat.appendChild(vatSelect);
+        tdVat.appendChild(selectVat);
         tr.appendChild(tdVat);
 
         // итого
         const tdTotal = document.createElement("td");
+        tdTotal.className = "col-total";
         tdTotal.textContent = formatMoney(line.total);
         tr.appendChild(tdTotal);
 
         tbody.appendChild(tr);
       });
 
-      // кнопка удалить выбранные
       const anySelected = lines.some(l => l.selected);
       document.getElementById("btn-delete-selected").disabled = !anySelected;
     }
 
-    
-    async function fetchProducts() {
-      const res = await fetch(apiBase + "/api/products/");
-      if (!res.ok) throw new Error("Ошибка загрузки товаров");
-      PRODUCTS = await res.json();
-    }
-
-    async function fetchPriceLists() {
-      const res = await fetch(apiBase + "/api/prices/");
-      if (!res.ok) throw new Error("Ошибка загрузки прайсов");
-      PRICE_LISTS = await res.json();
-    }
-
-    async function fetchPriceForLine(line) {
-      if (!line.productId || !line.priceListId) return;
-      const url = `${apiBase}/api/prices/${line.priceListId}/price?product_id=${encodeURIComponent(line.productId)}`;
-      const res = await fetch(url);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.price != null) {
-        line.price = Number(data.price) || 0;
-        recalcLine(line);
-      }
-    }
-
-    
+    // ------------------ Инициализация ------------------
     async function initApp() {
       clearError();
       try {
         await Promise.all([fetchProducts(), fetchPriceLists()]);
 
-        // хотя бы одна строка по умолчанию
         if (lines.length === 0) {
           lines.push(createEmptyLine());
           recalcAll();
@@ -515,9 +820,30 @@
       }
     }
 
-    
+    // ------------------ Обработчики ------------------
     document.addEventListener("DOMContentLoaded", () => {
-      
+      productDropdownEl = document.getElementById("product-dropdown");
+      productDropdownListEl = document.getElementById("product-dropdown-list");
+      productSearchInputEl = document.getElementById("product-search-input");
+
+      // поиск внутри дропдауна
+      productSearchInputEl.addEventListener("input", () => {
+        renderProductDropdownList(productSearchInputEl.value);
+      });
+
+      // клик по фону закрывает дропдаун
+      document.addEventListener("click", (e) => {
+        if (!productDropdownEl) return;
+        if (!productDropdownEl.classList.contains("visible")) return;
+        if (
+          !productDropdownEl.contains(e.target) &&
+          e.target !== currentProductInput
+        ) {
+          closeProductDropdown();
+        }
+      });
+
+      // Добавить строку
       document.getElementById("btn-add-row").addEventListener("click", () => {
         const line = createEmptyLine();
         lines.push(line);
@@ -525,7 +851,7 @@
         renderLines();
       });
 
-      
+      // Удалить выбранные
       document.getElementById("btn-delete-selected").addEventListener("click", () => {
         lines = lines.filter(l => !l.selected);
         if (lines.length === 0) {
@@ -535,58 +861,61 @@
         renderLines();
       });
 
-      
-      document.getElementById("select-all").addEventListener("change", (e) => {
-        const checked = e.target.checked;
-        lines.forEach(l => l.selected = checked);
-        renderLines();
-      });
-
-      
+      // Пересчитать выбранные
       document.getElementById("btn-recalc-selected").addEventListener("click", async () => {
         for (const line of lines) {
           if (!line.selected) continue;
           await fetchPriceForLine(line);
+          recalcLine(line);
         }
-        recalcAll();
+        updateSummary();
         renderLines();
       });
 
-      
       document.getElementById("btn-manage-prices").addEventListener("click", () => {
-        alert("Управление прайсами: здесь будет модальное окно с CRUD по прайсам.");
+        alert("Здесь будет модальное окно управления прайс-листами.");
       });
 
-      
       document.getElementById("btn-cancel").addEventListener("click", () => {
         if (window.BX24 && BX24.closeApplication) {
           BX24.closeApplication();
         } else {
-          alert("Отмена (в режиме разработки просто закрывай вкладку)");
+          alert("Отмена. В режиме разработки просто закройте вкладку.");
         }
       });
 
-      
       document.getElementById("btn-save").addEventListener("click", () => {
         console.log("Строки для сохранения в CRM:", lines);
-        alert("Пока сохранение не реализовано. Следующий шаг — связать с crm.deal.productrows.set");
+        alert("Сохранение в CRM ещё не реализовано.");
       });
 
-      // Попробуем получить контекст сделки в Bitrix
+      const cbSelectAll = document.getElementById("cb-select-all");
+      if (cbSelectAll) {
+        cbSelectAll.addEventListener("change", () => {
+          const checked = cbSelectAll.checked;
+          lines.forEach(l => { l.selected = checked; });
+          recalcAll();
+          renderLines();
+        });
+      }
+      // Получаем ID сделки из Bitrix
       if (window.BX24) {
         BX24.ready(function() {
           BX24.init(function() {
-            BX24.getAuth(() => {}); // просто для инициализации
+            BX24.getAuth(() => {});
             BX24.callMethod("placement.getData", {}, function(res) {
-              const data = res.data();
-              const dealId = data?.ID || data?.entityId || "неизвестно";
-              document.getElementById("tag-deal-info").textContent = "Сделка: " + dealId;
+              try {
+                const data = res.data();
+                const dealId = data?.ID || data?.entityId || "неизвестно";
+                document.getElementById("tag-deal-info").textContent = "Сделка: " + dealId;
+              } catch (e) {
+                console.warn("placement.getData error:", e);
+              }
             });
           });
         });
       }
 
-      // старт приложения
       initApp();
     });
   </script>
