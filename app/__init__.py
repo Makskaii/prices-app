@@ -16,7 +16,7 @@ def create_app():
     app.register_blueprint(prices_bp, url_prefix="/api/prices")
     app.register_blueprint(products_bp, url_prefix="/api/products")
 
-    @app.route("/")
+    @app.route("/", methods=["GET", "POST"])
     def index():
         return render_template("index.html")
 
