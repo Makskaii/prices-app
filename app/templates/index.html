@@ -5,7 +5,6 @@
   <title>Прайс-листы CRM</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <!-- Bitrix JS SDK (в бою внутри виджета) -->
   <script src="//api.bitrix24.com/api/v1/"></script>
 
   <style>
@@ -254,6 +253,7 @@
       width: 100%;
       border-collapse: collapse;
       font-size: 12px;
+      table-layout: fixed;        /* фиксированная раскладка */
     }
 
     .price-items-table th,
@@ -271,7 +271,7 @@
     .price-item-price-input {
       width: 100%;
       box-sizing: border-box;
-      padding: 3px 4px;
+      padding: 6px 10px;
       font-size: 12px;
       border-radius: 4px;
       border: 1px solid #c5ced8;
@@ -283,19 +283,46 @@
       bottom: 16px;
       background: #2fba4a;
       color: #fff;
-      padding: 8px 12px;
-      border-radius: 4px;
+      padding: 10px 14px;
+      border-radius: 6px;
       font-size: 13px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.18);
       z-index: 11000;
       opacity: 0;
       transform: translateY(10px);
       transition: opacity 0.2s ease, transform 0.2s ease;
+      
+      /* чтобы иконка и текст стояли рядом */
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
     }
 
     .toast.visible {
       opacity: 1;
       transform: translateY(0);
+    }
+
+    /* чуть-чуть больше иконка */
+    .toast-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;     /* сама «галочка»/«!» чуть больше */
+      font-weight: 700;
+    }
+
+    .toast-text {
+      line-height: 1.4;
+    }
+
+    /* вариант для ошибок (если понадобится) */
+    .toast-error {
+      background: #ff726c;
     }
     
     .app-root {
@@ -709,7 +736,6 @@
     </div>
   </div>
 
-  <!-- контейнер для тост-уведомлений -->
   <div id="toast-container"></div>
 
   <script>
@@ -717,9 +743,13 @@
     let PRODUCTS = [];
     let PRICE_LISTS = [];
     let lines = [];
+    let CURRENT_DEAL_ID = null;
+    let APP_READY = false;
 
     const VAT_RATES = [0, 10, 20];
     const apiBase = ""; 
+    const DEAL_STATE_FIELD = "UF_CRM_1764667329";
+    const LOCAL_STATE_PREFIX = "prices_widget_state_deal_";
 
     let currentProductInput = null;
     let currentProductLine = null;
@@ -817,6 +847,49 @@
       document.getElementById("sum-vat").textContent = formatMoney(sumVat);
       document.getElementById("sum-total").textContent = formatMoney(sumTotal);
     }
+
+    // -------- Состояние приложения (для сохранения в сделку) --------
+
+    function getAppStateForSave() {
+      // сохраняем только нужные поля по строкам
+      const cleanLines = lines.map(l => ({
+        productId: l.productId,
+        productName: l.productName,
+        priceListId: l.priceListId,
+        price: l.price,
+        quantity: l.quantity,
+        discountPercent: l.discountPercent,
+        vatPercent: l.vatPercent
+      }));
+
+      return { lines: cleanLines };
+    }
+
+    function applyAppState(state) {
+      if (!state || !Array.isArray(state.lines) || !state.lines.length) {
+        lines = [createEmptyLine()];
+        recalcAll();
+        renderLines();
+        return;
+      }
+
+      lines = state.lines.map(raw => {
+        const line = createEmptyLine();
+        line.productId = raw.productId || null;
+        line.productName = raw.productName || "";
+        line.priceListId = raw.priceListId || (PRICE_LISTS.length ? PRICE_LISTS[0].id : null);
+        line.price = Number(raw.price) || 0;
+        line.quantity = Number(raw.quantity) || 1;
+        line.discountPercent = Number(raw.discountPercent) || 0;
+        line.vatPercent = Number(raw.vatPercent) || 0;
+        recalcLine(line);
+        return line;
+      });
+
+      recalcAll();
+      renderLines();
+    }
+
 
     async function fetchProducts() {
       const res = await fetch(apiBase + "/api/products/");
@@ -1121,7 +1194,307 @@
       document.getElementById("btn-delete-selected").disabled = !anySelected;
     }
 
-    
+    function loadDealState() {
+  // сначала пробуем прочитать из localStorage (быстрее и не зависит от UF-поля)
+      if (CURRENT_DEAL_ID) {
+        try {
+          const localKey = LOCAL_STATE_PREFIX + CURRENT_DEAL_ID;
+          const localRaw = window.localStorage && window.localStorage.getItem(localKey);
+          if (localRaw) {
+            const localState = JSON.parse(localRaw);
+            applyAppState(localState);
+            // дальше всё равно попробуем взять из сделки — оно приоритетнее
+          }
+        } catch (e) {
+          console.warn("Ошибка чтения состояния из localStorage:", e);
+        }
+      }
+
+      if (!window.BX24 || !CURRENT_DEAL_ID) return;
+
+      BX24.callMethod("crm.deal.get", { id: CURRENT_DEAL_ID }, function(res) {
+        if (res.error()) {
+          console.error("crm.deal.get error:", res.error());
+          return;
+        }
+        const deal = res.data() || {};
+        const rawState = deal[DEAL_STATE_FIELD];
+
+        if (!rawState) {
+          // если поля нет или оно пустое — остаётся состояние из localStorage (если было)
+          return;
+        }
+
+        try {
+          const state = JSON.parse(rawState);
+          applyAppState(state);
+        } catch (e) {
+          console.error("Ошибка парсинга состояния сделки:", e);
+        }
+      });
+    }
+
+      function initBitrixContext() {
+        if (!window.BX24) {
+          console.warn("BX24 не доступен – работаем в локальном режиме.");
+          return;
+        }
+
+        BX24.ready(function() {
+          BX24.init(function() {
+            BX24.callMethod("placement.getData", {}, function(res) {
+              if (res.error()) {
+                console.error("placement.getData error:", res.error());
+                return;
+              }
+
+              const raw = res.data ? res.data() : res.data || {};
+              console.log("placement.getData raw:", raw);
+
+              let dealId = null;
+
+              // 1) Прямые поля
+              if (raw.ID || raw.DEAL_ID || raw.ENTITY_ID || raw.entityId || raw.dealId) {
+                dealId = raw.ID || raw.DEAL_ID || raw.ENTITY_ID || raw.entityId || raw.dealId;
+              }
+
+              // 2) PLACEMENT_OPTIONS (часто именно тут лежит ID)
+              if (!dealId && raw.PLACEMENT_OPTIONS) {
+                let opts = raw.PLACEMENT_OPTIONS;
+                try {
+                  if (typeof opts === "string") {
+                    opts = JSON.parse(opts);
+                  }
+                } catch (e) {
+                  console.warn("Ошибка парсинга PLACEMENT_OPTIONS:", e, raw.PLACEMENT_OPTIONS);
+                  opts = {};
+                }
+
+                if (opts) {
+                  dealId =
+                    opts.DEAL_ID ||
+                    opts.Id ||
+                    opts.ID ||
+                    opts.ENTITY_ID ||
+                    opts.entityId ||
+                    opts.dealId;
+                }
+
+                console.log("PLACEMENT_OPTIONS parsed:", opts, "dealId:", dealId);
+              }
+
+              // 3) Иногда данные ещё и в raw.options
+              if (!dealId && raw.options) {
+                let opts = raw.options;
+                try {
+                  if (typeof opts === "string") {
+                    opts = JSON.parse(opts);
+                  }
+                } catch (e) {
+                  console.warn("Ошибка парсинга options:", e, raw.options);
+                  opts = {};
+                }
+
+                if (opts) {
+                  dealId =
+                    opts.DEAL_ID ||
+                    opts.Id ||
+                    opts.ID ||
+                    opts.ENTITY_ID ||
+                    opts.entityId ||
+                    opts.dealId;
+                }
+
+                console.log("options parsed:", opts, "dealId:", dealId);
+              }
+
+              // 4) Фоллбек для разработки — ID из query-параметров URL
+              if (!dealId && window.location && window.location.search) {
+                const m = window.location.search.match(/[?&](deal_id|DEAL_ID|ID)=(\d+)/i);
+                if (m) {
+                  dealId = m[2];
+                  console.log("dealId from URL:", dealId);
+                }
+              }
+
+              // Нормализуем ID (оставляем цифры)
+              if (dealId) {
+                const digits = String(dealId).match(/\d+/);
+                CURRENT_DEAL_ID = digits ? digits[0] : String(dealId);
+              }
+
+              const tagEl = document.getElementById("tag-deal-info");
+
+              if (CURRENT_DEAL_ID) {
+                if (tagEl) tagEl.textContent = "Сделка: " + CURRENT_DEAL_ID;
+                console.log("Определён ID сделки:", CURRENT_DEAL_ID);
+
+                if (APP_READY) {
+                  loadDealState();
+                }
+              } else {
+                if (tagEl) tagEl.textContent = "Сделка: не определена";
+                console.warn("Не удалось определить ID сделки из placement.getData. raw:", raw);
+              }
+            });
+          });
+        });
+      }
+      
+      function initBitrixContext() {
+        if (!window.BX24) {
+          console.warn("BX24 не доступен – работаем в локальном режиме.");
+          return;
+        }
+
+        BX24.ready(function() {
+          BX24.init(function() {
+            // 1) Попробуем через placement.info() (часто там уже есть ID)
+            try {
+              if (BX24.placement && BX24.placement.info) {
+                const info = BX24.placement.info();
+                console.log("BX24.placement.info():", info);
+
+                if (info && info.options) {
+                  let opts = info.options;
+                  try {
+                    if (typeof opts === "string") {
+                      opts = JSON.parse(opts);
+                    }
+                  } catch (e) {
+                    console.warn("Ошибка парсинга info.options:", e, info.options);
+                    opts = {};
+                  }
+
+                  let dealId =
+                    opts.DEAL_ID ||
+                    opts.Id ||
+                    opts.ID ||
+                    opts.ENTITY_ID ||
+                    opts.entityId ||
+                    opts.dealId;
+
+                  if (dealId) {
+                    const digits = String(dealId).match(/\d+/);
+                    CURRENT_DEAL_ID = digits ? digits[0] : String(dealId);
+                    console.log("ID сделки из placement.info():", CURRENT_DEAL_ID);
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn("Ошибка обработки BX24.placement.info():", e);
+            }
+
+            // 2) Дополнительно дергаем placement.getData (как раньше)
+            BX24.callMethod("placement.getData", {}, function(res) {
+              if (res.error()) {
+                console.error("placement.getData error:", res.error());
+              } else {
+                const raw = res.data ? res.data() : res.data || {};
+                console.log("placement.getData raw:", raw);
+
+                if (!CURRENT_DEAL_ID) {
+                  let dealId =
+                    raw.ID ||
+                    raw.DEAL_ID ||
+                    raw.ENTITY_ID ||
+                    raw.entityId ||
+                    raw.dealId;
+
+                  if (!dealId && raw.PLACEMENT_OPTIONS) {
+                    let opts = raw.PLACEMENT_OPTIONS;
+                    try {
+                      if (typeof opts === "string") {
+                        opts = JSON.parse(opts);
+                      }
+                    } catch (e) {
+                      console.warn("Ошибка парсинга PLACEMENT_OPTIONS:", e, raw.PLACEMENT_OPTIONS);
+                      opts = {};
+                    }
+
+                    if (opts) {
+                      dealId =
+                        opts.DEAL_ID ||
+                        opts.Id ||
+                        opts.ID ||
+                        opts.ENTITY_ID ||
+                        opts.entityId ||
+                        opts.dealId;
+                    }
+                    console.log("PLACEMENT_OPTIONS parsed:", opts, "dealId:", dealId);
+                  }
+
+                  if (!dealId && raw.options) {
+                    let opts = raw.options;
+                    try {
+                      if (typeof opts === "string") {
+                        opts = JSON.parse(opts);
+                      }
+                    } catch (e) {
+                      console.warn("Ошибка парсинга options:", e, raw.options);
+                      opts = {};
+                    }
+
+                    if (opts) {
+                      dealId =
+                        opts.DEAL_ID ||
+                        opts.Id ||
+                        opts.ID ||
+                        opts.ENTITY_ID ||
+                        opts.entityId ||
+                        opts.dealId;
+                    }
+                    console.log("options parsed:", opts, "dealId:", dealId);
+                  }
+
+                  if (!dealId && window.location && window.location.search) {
+                    const m = window.location.search.match(/[?&](deal_id|DEAL_ID|ID)=(\d+)/i);
+                    if (m) {
+                      dealId = m[2];
+                      console.log("dealId from URL:", dealId);
+                    }
+                  }
+
+                  if (dealId) {
+                    const digits = String(dealId).match(/\d+/);
+                    CURRENT_DEAL_ID = digits ? digits[0] : String(dealId);
+                    console.log("Определён ID сделки (placement.getData):", CURRENT_DEAL_ID);
+                  }
+                }
+              }
+
+              const tagEl = document.getElementById("tag-deal-info");
+
+              // 3) Если всё равно не нашли — спросим у пользователя вручную
+              if (!CURRENT_DEAL_ID) {
+                console.warn("Не удалось автоматически определить ID сделки.");
+                const manual = window.prompt(
+                  "Не удалось автоматически определить ID сделки.\n" +
+                  "Введите ID сделки вручную (число, как в URL сделки):"
+                );
+                if (manual) {
+                  const digits = String(manual).match(/\d+/);
+                  CURRENT_DEAL_ID = digits ? digits[0] : String(manual);
+                  console.log("ID сделки, введённый вручную:", CURRENT_DEAL_ID);
+                }
+              }
+
+              if (CURRENT_DEAL_ID) {
+                if (tagEl) tagEl.textContent = "Сделка: " + CURRENT_DEAL_ID;
+                if (APP_READY) {
+                  loadDealState();
+                }
+              } else {
+                if (tagEl) tagEl.textContent = "Сделка: не определена";
+                console.warn("CURRENT_DEAL_ID окончательно не определён.");
+              }
+            });
+          });
+        });
+      }
+
+
+
     async function initApp() {
       clearError();
       try {
@@ -1137,6 +1510,11 @@
       } catch (e) {
         console.error(e);
         showError("Ошибка инициализации: " + e.message);
+      } finally {
+        APP_READY = true;
+        if (CURRENT_DEAL_ID) {
+          loadDealState();
+        }
       }
     }
     
@@ -1179,29 +1557,41 @@
     }
 
     function showToast(message, type = "success") {
-      const container = document.getElementById("toast-container");
-      if (!container) return;
+    const container = document.getElementById("toast-container");
+    if (!container) return;
 
-      const toast = document.createElement("div");
-      toast.className = "toast";
-      if (type !== "success") {
-        toast.style.background = "#ff726c";
-      }
-      toast.textContent = message;
-
-      container.appendChild(toast);
-
-      setTimeout(() => {
-        toast.classList.add("visible");
-      }, 10);
-
-      setTimeout(() => {
-        toast.classList.remove("visible");
-        setTimeout(() => {
-          container.removeChild(toast);
-        }, 200);
-      }, 2500);
+    const toast = document.createElement("div");
+    toast.className = "toast";
+    if (type !== "success") {
+      toast.classList.add("toast-error");
     }
+
+    const icon = document.createElement("div");
+    icon.className = "toast-icon";
+    icon.textContent = (type === "success") ? "✓" : "!";
+
+    const text = document.createElement("div");
+    text.className = "toast-text";
+    text.textContent = message;
+
+    toast.appendChild(icon);
+    toast.appendChild(text);
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+      toast.classList.add("visible");
+    }, 10);
+
+    setTimeout(() => {
+      toast.classList.remove("visible");
+      setTimeout(() => {
+        if (toast.parentNode === container) {
+          container.removeChild(toast);
+        }
+      }, 200);
+    }, 2500);
+  }
 
     function openPriceManager() {
       const backdrop = document.getElementById("price-manager-backdrop");
@@ -1298,7 +1688,7 @@
         await loadPriceItemsForCurrentPriceList();
       } catch (e) {
         console.error("Ошибка загрузки прайсов для модалки:", e);
-        alert("Ошибка загрузки списка прайсов");
+        showToast("Ошибка загрузки списка прайсов", "error");
       }
     }
 
@@ -1354,7 +1744,7 @@
         renderPriceItemsTable();
       } catch (e) {
         console.error(e);
-        alert("Не удалось загрузить товары прайса");
+        showToast("Не удалось загрузить товары прайса", "error");
       }
     }
 
@@ -1370,14 +1760,13 @@
           <thead>
             <tr>
               <th style="width:40px;">#</th>
-              <th>Название</th>
-              <th>Описание</th>
-              <th style="width:90px;">Цена</th>
+              <th style="width:220px;">Цена</th>
+              <th>Товар</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td colspan="4" style="padding:8px;color:#888;">Нет товаров для отображения.</td>
+              <td colspan="3" style="padding:8px;color:#888;">Нет товаров для отображения.</td>
             </tr>
           </tbody>
         `;
@@ -1389,9 +1778,8 @@
         <thead>
           <tr>
             <th style="width:40px;">#</th>
-            <th>Название</th>
-            <th>Описание</th>
-            <th style="width:90px;">Цена</th>
+            <th style="width:220px;">Цена</th>
+            <th>Товар</th>
           </tr>
         </thead>
         <tbody>
@@ -1408,26 +1796,14 @@
             <td>
               <input
                 type="text"
-                class="price-item-name-input"
-                data-index="${index}"
-                value="${name.replace(/"/g, '&quot;')}"
-              >
-            </td>
-            <td>
-              <input
-                type="text"
-                class="price-item-desc-input"
-                data-index="${index}"
-                value="${(desc || "").replace(/"/g, '&quot;')}"
-              >
-            </td>
-            <td>
-              <input
-                type="text"
                 class="price-item-price-input"
                 data-index="${index}"
                 value="${formatMoney(price)}"
               >
+            </td>
+            <td>
+              <div style="font-size:12px;font-weight:500;">${name}</div>
+              ${desc ? `<div style="font-size:11px;color:#888;">${desc}</div>` : ""}
             </td>
           </tr>
         `;
@@ -1438,31 +1814,10 @@
 
       if (metaEl) metaEl.textContent = "Товаров в прайсе: " + pmItems.length;
 
-      // --- обработчики названия ---
-      const nameInputs = table.querySelectorAll(".price-item-name-input");
-      nameInputs.forEach(input => {
-        input.addEventListener("blur", () => {
-          const idx = Number(input.dataset.index);
-          if (isNaN(idx) || !pmItems[idx]) return;
-          pmItems[idx].product_name = input.value || "";
-          pmItemsDirty = true;
-        });
-      });
+      const inputs = table.querySelectorAll(".price-item-price-input");
+      inputs.forEach(input => {
+        input.style.width = "100%"; // дополнительно "раздуем" само поле
 
-      // --- обработчики описания ---
-      const descInputs = table.querySelectorAll(".price-item-desc-input");
-      descInputs.forEach(input => {
-        input.addEventListener("blur", () => {
-          const idx = Number(input.dataset.index);
-          if (isNaN(idx) || !pmItems[idx]) return;
-          pmItems[idx].product_description = input.value || "";
-          pmItemsDirty = true;
-        });
-      });
-
-      // --- обработчики цены ---
-      const priceInputs = table.querySelectorAll(".price-item-price-input");
-      priceInputs.forEach(input => {
         input.addEventListener("focus", () => {
           const idx = Number(input.dataset.index);
           const item = pmItems[idx];
@@ -1502,7 +1857,7 @@
       const description = (descInput.value || "").trim();
 
       if (!name) {
-        alert("Введите название прайса");
+        showToast("Введите название прайса", "error");
         return;
       }
 
@@ -1550,14 +1905,14 @@
         showToast(wasNew ? "Прайс создан" : "Прайс сохранён");
       } catch (e) {
         console.error(e);
-        alert(e.message || "Ошибка сохранения прайс-листа");
+        showToast(e.message || "Ошибка сохранения прайс-листа", "error");
       }
     }
 
     
     async function pmCopyPriceList() {
       if (pmSelectedId == null) {
-        alert("Сначала выберите прайс для копирования");
+        showToast("Сначала выберите прайс для копирования", "error");
         return;
       }
       try {
@@ -1571,14 +1926,14 @@
         showToast("Прайс скопирован");
       } catch (e) {
         console.error(e);
-        alert(e.message || "Ошибка копирования прайс-листа");
+        showToast(e.message || "Ошибка копирования прайс-листа", "error");
       }
     }
 
     
     async function pmDeletePriceList() {
       if (pmSelectedId == null) {
-        alert("Сначала выберите прайс для удаления");
+        showToast("Сначала выберите прайс для удаления", "error");
         return;
       }
 
@@ -1603,10 +1958,10 @@
         await fetchPriceLists();
         renderLines();
 
-        showToast("Прайс удалён");
+        showToast(`Прайс "${name}" удалён`);
       } catch (e) {
         console.error(e);
-        alert(e.message || "Ошибка удаления прайс-листа");
+        showToast(e.message || "Ошибка удаления прайс-листа", "error");
       }
     }
     
@@ -1703,13 +2058,86 @@
         if (window.BX24 && BX24.closeApplication) {
           BX24.closeApplication();
         } else {
-          alert("Отмена. В режиме разработки просто закройте вкладку.");
+          showToast("Отмена. Просто закройте вкладку.", "error");
         }
       });
 
       document.getElementById("btn-save").addEventListener("click", () => {
-        console.log("Строки для сохранения в CRM:", lines);
-        alert("Сохранение в CRM ещё не реализовано.");
+        // Пересчитаем всё на всякий случай
+        recalcAll();
+
+        const sumTotal = lines.reduce((acc, l) => acc + (Number(l.total) || 0), 0);
+        const state = getAppStateForSave();
+
+        // Локальное сохранение в браузер — всегда, если есть ID сделки
+        if (CURRENT_DEAL_ID && window.localStorage) {
+          try {
+            const key = LOCAL_STATE_PREFIX + CURRENT_DEAL_ID;
+            window.localStorage.setItem(key, JSON.stringify(state));
+          } catch (e) {
+            console.warn("Ошибка сохранения состояния в localStorage:", e);
+          }
+        }
+
+        // Если вообще нет BX24 — можем только локально
+        if (!window.BX24) {
+          showToast("Bitrix24 SDK недоступен. Данные сохранены только локально в браузере.", "error");
+          console.log("sumTotal:", sumTotal, "state:", state);
+          return;
+        }
+
+        // Если BX24 есть, но ID сделки не определён — спросим вручную
+        if (!CURRENT_DEAL_ID) {
+          const manual = window.prompt(
+            "Не удалось автоматически определить ID сделки.\n" +
+            "Введите ID сделки вручную (число, как в URL сделки):"
+          );
+          if (!manual) {
+            showToast("Без ID сделки сохранить данные в CRM нельзя. Данные остались только локально.", "error");
+            return;
+          }
+          const digits = String(manual).match(/\d+/);
+          CURRENT_DEAL_ID = digits ? digits[0] : String(manual);
+
+          const tagEl = document.getElementById("tag-deal-info");
+          if (tagEl) tagEl.textContent = "Сделка: " + CURRENT_DEAL_ID;
+        }
+
+        // Готовим поля для crm.deal.update
+        const fields = {
+          OPPORTUNITY: sumTotal
+        };
+        fields[DEAL_STATE_FIELD] = JSON.stringify(state);
+
+        BX24.callMethod(
+          "crm.deal.update",
+          { id: CURRENT_DEAL_ID, fields },
+          function(res) {
+            if (res.error()) {
+              console.error("crm.deal.update error:", res.error());
+              showToast("Ошибка сохранения сделки: " + res.error(), "error");
+              return;
+            }
+
+            // Можно, но необязательно, подтянуть сделку и ещё раз применить состояние
+            BX24.callMethod("crm.deal.get", { id: CURRENT_DEAL_ID }, function(res2) {
+              if (!res2.error()) {
+                try {
+                  const deal = res2.data && res2.data() ? res2.data() : res2.data || {};
+                  const rawState = deal[DEAL_STATE_FIELD];
+                  if (rawState) {
+                    const st = JSON.parse(rawState);
+                    applyAppState(st);
+                  }
+                } catch (e) {
+                  console.warn("Ошибка повторного применения состояния:", e);
+                }
+              }
+
+              showToast("Сумма и состояние сохранены в сделку #" + CURRENT_DEAL_ID, "success");
+            });
+          }
+        );
       });
 
       const cbSelectAll = document.getElementById("cb-select-all");
@@ -1721,25 +2149,9 @@
           renderLines();
         });
       }
-      // Получаем ID сделки из Bitrix
-      if (window.BX24) {
-        BX24.ready(function() {
-          BX24.init(function() {
-            BX24.getAuth(() => {});
-            BX24.callMethod("placement.getData", {}, function(res) {
-              try {
-                const data = res.data();
-                const dealId = data?.ID || data?.entityId || "неизвестно";
-                document.getElementById("tag-deal-info").textContent = "Сделка: " + dealId;
-              } catch (e) {
-                console.warn("placement.getData error:", e);
-              }
-            });
-          });
-        });
-      }
 
       initApp();
+      initBitrixContext();
     });
   </script>
 </body>

@@ -1,10 +1,10 @@
 from flask import Blueprint, request, jsonify
-
 from app.database import db
 from app.models.price_item import PriceListItem
 from app.models.price_list import PriceList
 from app.models.product import Product
 from app.services.price_service import PriceService
+from sqlalchemy import and_
 
 prices_bp = Blueprint("prices_bp", __name__)
 
@@ -154,9 +154,6 @@ def update_price_item(pl_id, product_id):
         "product_id": product_id,
         "price": float(item.price),
     })
-
-
-# ---------- список товаров прайса (для модалки управления прайсами) ----------
 
 
 @prices_bp.route("/<int:pl_id>/items", methods=["GET"])
