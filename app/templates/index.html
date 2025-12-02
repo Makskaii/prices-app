@@ -1349,7 +1349,6 @@
         if (!res.ok) throw new Error("Ошибка загрузки товаров прайса");
         const data = await res.json() || [];
 
-        
         pmItems = data;
         pmItemsDirty = false;
         renderPriceItemsTable();
@@ -1364,21 +1363,25 @@
       const table = document.getElementById("pm-items-table");
       if (!table) return;
 
+      const metaEl = document.getElementById("pm-meta");
+
       if (!pmItems || !pmItems.length) {
         table.innerHTML = `
           <thead>
             <tr>
               <th style="width:40px;">#</th>
-              <th>Товар</th>
-              <th style="width:80px;">Цена</th>
+              <th>Название</th>
+              <th>Описание</th>
+              <th style="width:90px;">Цена</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td colspan="3" style="padding:8px;color:#888;">Нет товаров для отображения.</td>
+              <td colspan="4" style="padding:8px;color:#888;">Нет товаров для отображения.</td>
             </tr>
           </tbody>
         `;
+        if (metaEl) metaEl.textContent = "Товаров в прайсе: 0";
         return;
       }
 
@@ -1386,7 +1389,8 @@
         <thead>
           <tr>
             <th style="width:40px;">#</th>
-            <th>Товар</th>
+            <th>Название</th>
+            <th>Описание</th>
             <th style="width:90px;">Цена</th>
           </tr>
         </thead>
@@ -1402,8 +1406,20 @@
           <tr>
             <td>${index + 1}</td>
             <td>
-              <div style="font-size:12px;font-weight:500;">${name}</div>
-              ${desc ? `<div style="font-size:11px;color:#888;">${desc}</div>` : ""}
+              <input
+                type="text"
+                class="price-item-name-input"
+                data-index="${index}"
+                value="${name.replace(/"/g, '&quot;')}"
+              >
+            </td>
+            <td>
+              <input
+                type="text"
+                class="price-item-desc-input"
+                data-index="${index}"
+                value="${(desc || "").replace(/"/g, '&quot;')}"
+              >
             </td>
             <td>
               <input
@@ -1420,8 +1436,33 @@
       html += "</tbody>";
       table.innerHTML = html;
 
-      const inputs = table.querySelectorAll(".price-item-price-input");
-      inputs.forEach(input => {
+      if (metaEl) metaEl.textContent = "Товаров в прайсе: " + pmItems.length;
+
+      // --- обработчики названия ---
+      const nameInputs = table.querySelectorAll(".price-item-name-input");
+      nameInputs.forEach(input => {
+        input.addEventListener("blur", () => {
+          const idx = Number(input.dataset.index);
+          if (isNaN(idx) || !pmItems[idx]) return;
+          pmItems[idx].product_name = input.value || "";
+          pmItemsDirty = true;
+        });
+      });
+
+      // --- обработчики описания ---
+      const descInputs = table.querySelectorAll(".price-item-desc-input");
+      descInputs.forEach(input => {
+        input.addEventListener("blur", () => {
+          const idx = Number(input.dataset.index);
+          if (isNaN(idx) || !pmItems[idx]) return;
+          pmItems[idx].product_description = input.value || "";
+          pmItemsDirty = true;
+        });
+      });
+
+      // --- обработчики цены ---
+      const priceInputs = table.querySelectorAll(".price-item-price-input");
+      priceInputs.forEach(input => {
         input.addEventListener("focus", () => {
           const idx = Number(input.dataset.index);
           const item = pmItems[idx];
@@ -1442,6 +1483,7 @@
         });
       });
     }
+
 
     function pmNewPriceList() {
       pmSelectedId = null;
