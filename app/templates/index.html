@@ -31,6 +31,273 @@
       color: var(--bx-text);
     }
 
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(9, 16, 29, 0.45);
+      z-index: 10000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-backdrop.visible {
+      display: flex;
+    }
+
+    .modal-dialog {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+      min-width: 960px;
+      max-width: 1100px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--bx-border);
+    }
+
+    .modal-header {
+      padding: 10px 14px;
+      border-bottom: 1px solid #e1e6ec;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: move;
+    }
+
+    .modal-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .modal-close-btn {
+      border: none;
+      background: transparent;
+      font-size: 16px;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0;
+      color: #999;
+    }
+
+    .modal-close-btn:hover {
+      color: #555;
+    }
+
+    .modal-body {
+      padding: 12px 14px;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 12px;
+      overflow: hidden;
+    }
+
+    .modal-footer {
+      padding: 10px 14px;
+      border-top: 1px solid #e1e6ec;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .price-list-sidebar {
+      border: 1px solid #e3e7ee;
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      background: #fafbfe;
+    }
+
+    .price-list-sidebar-header {
+      padding: 8px 10px;
+      background: #f4f7fb;
+      border-bottom: 1px solid #e3e7ee;
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .price-list-search {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 4px 6px;
+      font-size: 12px;
+      border-radius: 4px;
+      border: 1px solid #c5ced8;
+      background: #fff;
+    }
+
+    .price-list-search:focus {
+      border-color: var(--bx-blue-dark);
+      box-shadow: 0 0 0 2px rgba(59, 200, 245, 0.2);
+    }
+
+    .price-list-sidebar-list {
+      flex: 1;
+      overflow: auto;
+      padding: 4px 0;
+    }
+
+    .price-list-item {
+      padding: 6px 10px;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .price-list-item-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .price-list-item-count {
+      margin-left: 8px;
+      font-size: 11px;
+      color: var(--bx-muted);
+      white-space: nowrap;
+    }
+
+    .price-list-item:hover {
+      background: #f0f6ff;
+    }
+
+    .price-list-item.active {
+      background: #e2f3ff;
+    }
+
+    .price-list-form {
+      border: 1px solid #e3e7ee;
+      border-radius: 6px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #fafbfe;
+    }
+
+    .price-list-actions {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .price-list-form-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .price-list-form-row label {
+      font-size: 12px;
+      color: #666;
+    }
+
+    .price-list-form-row input[type="text"],
+    .price-list-form-row textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px 8px;
+      font-size: 13px;
+      border-radius: 4px;
+      border: 1px solid #c5ced8;
+      background: #fff;
+      outline: none;
+      resize: vertical;
+      min-height: 32px;
+    }
+
+    .price-list-form-row textarea {
+      min-height: 60px;
+    }
+
+    .price-list-form-row input:focus,
+    .price-list-form-row textarea:focus {
+      border-color: var(--bx-blue-dark);
+      box-shadow: 0 0 0 2px rgba(59, 200, 245, 0.2);
+    }
+
+    .price-list-form-meta {
+      font-size: 12px;
+      color: var(--bx-muted);
+    }
+
+    .price-items-wrapper {
+      border: 1px solid #e3e7ee;
+      border-radius: 6px;
+      background: #fff;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      max-height: 260px;
+    }
+
+    .price-items-header {
+      padding: 6px 8px;
+      background: #f4f7fb;
+      border-bottom: 1px solid #e3e7ee;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .price-items-table-container {
+      overflow: auto;
+    }
+
+    .price-items-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .price-items-table th,
+    .price-items-table td {
+      padding: 4px 6px;
+      border-bottom: 1px solid #eef1f4;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    .price-items-table tbody tr:nth-child(even) {
+      background: #fbfcfe;
+    }
+
+    .price-item-price-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 3px 4px;
+      font-size: 12px;
+      border-radius: 4px;
+      border: 1px solid #c5ced8;
+    }
+
+    .toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      background: #2fba4a;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.18);
+      z-index: 11000;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .toast.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    
     .app-root {
       max-width: 1360px;
       margin: 0 auto;
@@ -239,7 +506,6 @@
     .summary-label { margin-right: 12px; }
     .summary-value { text-align: right; }
 
-    /* ---------- Выпадающий список товаров ---------- */
     .product-dropdown {
       position: fixed;
       z-index: 9999;
@@ -301,7 +567,7 @@
 </head>
 <body>
   <div class="app-root">
-    <!-- ЛЕВАЯ ЧАСТЬ: таблица товаров -->
+  
     <div class="left-block">
       <div id="error-banner" class="error-banner"></div>
 
@@ -348,7 +614,6 @@
       </div>
     </div>
 
-    <!-- ПРАВАЯ ЧАСТЬ: суммы -->
     <div class="right-block">
       <div class="summary-card">
         <div class="summary-row">
@@ -375,7 +640,6 @@
     </div>
   </div>
 
-  <!-- Наш кастомный дропдаун выбора товара -->
   <div id="product-dropdown" class="product-dropdown">
     <div class="product-dropdown-search">
       <input type="text" id="product-search-input" placeholder="Поиск товара..." />
@@ -383,23 +647,86 @@
     <div id="product-dropdown-list" class="product-dropdown-list"></div>
   </div>
 
+
+  <div class="modal-backdrop" id="price-manager-backdrop">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title">Управление прайс-листами</div>
+        <button class="modal-close-btn" id="pm-btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        
+        <div class="price-list-sidebar">
+          <div class="price-list-sidebar-header">
+            <span>Прайс-листы</span>
+            <input
+              type="text"
+              id="pm-search-input"
+              class="price-list-search"
+              placeholder="Поиск по названию..."
+            >
+          </div>
+          <div class="price-list-sidebar-list" id="pm-price-list-container">
+            
+          </div>
+        </div>
+
+        <div class="price-list-form">
+          <div class="price-list-actions">
+            <button class="btn btn-primary" id="pm-btn-new">Новый прайс</button>
+            <button class="btn" id="pm-btn-copy">Копировать</button>
+            <button class="btn btn-danger" id="pm-btn-delete">Удалить</button>
+          </div>
+
+          <div class="price-list-form-row">
+            <label for="pm-input-name">Название прайса</label>
+            <input type="text" id="pm-input-name" placeholder="Например: Базовый прайс">
+          </div>
+
+          <div class="price-list-form-row">
+            <label for="pm-input-description">Описание</label>
+            <textarea id="pm-input-description" placeholder="Краткое описание прайса"></textarea>
+          </div>
+
+          <div class="price-list-form-meta" id="pm-meta">
+            Товаров в прайсе: 0
+          </div>
+
+          <div class="price-items-wrapper">
+            <div class="price-items-header">Товары в прайсе</div>
+            <div class="price-items-table-container">
+              <table class="price-items-table" id="pm-items-table">
+                
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="pm-btn-cancel">Закрыть</button>
+        <button class="btn btn-success" id="pm-btn-save">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- контейнер для тост-уведомлений -->
+  <div id="toast-container"></div>
+
   <script>
-    // ------------------ Глобальные данные ------------------
+    
     let PRODUCTS = [];
     let PRICE_LISTS = [];
     let lines = [];
 
     const VAT_RATES = [0, 10, 20];
-    const apiBase = ""; // тот же домен/порт, где крутится Flask
+    const apiBase = ""; 
 
-    // для дропдауна
     let currentProductInput = null;
     let currentProductLine = null;
     let productDropdownEl = null;
     let productDropdownListEl = null;
     let productSearchInputEl = null;
 
-    // ------------------ Утилиты ------------------
     function formatMoney(value) {
       let num = Number(value);
       if (isNaN(num)) num = 0;
@@ -427,7 +754,6 @@
       banner.style.display = "none";
     }
 
-    // ------------------ Модель строки ------------------
     function createEmptyLine() {
       return {
         id: Date.now().toString() + Math.random().toString(16).slice(2),
@@ -492,13 +818,11 @@
       document.getElementById("sum-total").textContent = formatMoney(sumTotal);
     }
 
-    // ------------------ API ------------------
     async function fetchProducts() {
       const res = await fetch(apiBase + "/api/products/");
       if (!res.ok) throw new Error("Ошибка загрузки товаров");
       const data = await res.json() || [];
 
-      // дедупликация только по ID (лицензия/поддержка с одинаковым именем остаются разными)
       const map = new Map();
       for (const p of data) {
         if (!p.id) continue;
@@ -533,7 +857,6 @@
       renderLines();
     }
 
-    // ------------------ Дропдаун товаров ------------------
     function openProductDropdown(inputEl, line) {
       currentProductInput = inputEl;
       currentProductLine = line;
@@ -619,7 +942,6 @@
       });
     }
 
-    // ------------------ Рендер таблицы ------------------
     function renderLines() {
       const tbody = document.getElementById("lines-tbody");
       tbody.innerHTML = "";
@@ -628,13 +950,13 @@
         const tr = document.createElement("tr");
         if (line.selected) tr.classList.add("selected");
 
-        // №
+        
         const tdIndex = document.createElement("td");
         tdIndex.className = "col-index";
         tdIndex.textContent = index + 1;
         tr.appendChild(tdIndex);
 
-        // чекбокс
+        
         const tdCheckbox = document.createElement("td");
         tdCheckbox.className = "col-checkbox";
         const cb = document.createElement("input");
@@ -647,7 +969,6 @@
         tdCheckbox.appendChild(cb);
         tr.appendChild(tdCheckbox);
 
-        // товар (input + наш дропдаун)
         const tdProduct = document.createElement("td");
         tdProduct.className = "col-product";
         const inputProduct = document.createElement("input");
@@ -663,8 +984,7 @@
           openProductDropdown(inputProduct, line);
         });
 
-        // если пользователь вручную что-то написал и ушёл с поля — не трогаем id,
-        // он обновится только при выборе из списка
+        
         inputProduct.addEventListener("input", () => {
           line.productName = inputProduct.value;
         });
@@ -672,7 +992,7 @@
         tdProduct.appendChild(inputProduct);
         tr.appendChild(tdProduct);
 
-        // прайс-лист
+        
         const tdPriceList = document.createElement("td");
         tdPriceList.className = "col-price-list";
         const selectPriceList = document.createElement("select");
@@ -692,7 +1012,7 @@
         tdPriceList.appendChild(selectPriceList);
         tr.appendChild(tdPriceList);
 
-        // цена
+        
         const tdPrice = document.createElement("td");
         tdPrice.className = "col-price";
         const inputPrice = document.createElement("input");
@@ -726,7 +1046,7 @@
         tdPrice.appendChild(inputPrice);
         tr.appendChild(tdPrice);
 
-        // количество
+        
         const tdQty = document.createElement("td");
         tdQty.className = "col-qty";
         const qtyWrapper = document.createElement("div");
@@ -750,7 +1070,7 @@
         tdQty.appendChild(qtyWrapper);
         tr.appendChild(tdQty);
 
-        // скидка %
+        
         const tdDiscount = document.createElement("td");
         tdDiscount.className = "col-discount";
         const inputDiscount = document.createElement("input");
@@ -768,7 +1088,7 @@
         tdDiscount.appendChild(inputDiscount);
         tr.appendChild(tdDiscount);
 
-        // НДС %
+        
         const tdVat = document.createElement("td");
         tdVat.className = "col-vat";
         const selectVat = document.createElement("select");
@@ -788,7 +1108,7 @@
         tdVat.appendChild(selectVat);
         tr.appendChild(tdVat);
 
-        // итого
+        
         const tdTotal = document.createElement("td");
         tdTotal.className = "col-total";
         tdTotal.textContent = formatMoney(line.total);
@@ -801,7 +1121,7 @@
       document.getElementById("btn-delete-selected").disabled = !anySelected;
     }
 
-    // ------------------ Инициализация ------------------
+    
     async function initApp() {
       clearError();
       try {
@@ -819,8 +1139,436 @@
         showError("Ошибка инициализации: " + e.message);
       }
     }
+    
+    // ------------------ Модалка управления прайсами ------------------
+    let pmSelectedId = null;      
+    let pmSearchTerm = "";        
+    let pmItems = [];            
+    let pmItemsDirty = false;    
+    let pmDragState = {
+      dragging: false,
+      offsetX: 0,
+      offsetY: 0,
+    };
 
-    // ------------------ Обработчики ------------------
+    function enablePriceManagerDragging() {
+      const backdrop = document.getElementById("price-manager-backdrop");
+      if (!backdrop) return;
+      const dialog = backdrop.querySelector(".modal-dialog");
+      const header = dialog.querySelector(".modal-header");
+
+      header.addEventListener("mousedown", (e) => {
+        pmDragState.dragging = true;
+        pmDragState.offsetX = e.clientX - dialog.offsetLeft;
+        pmDragState.offsetY = e.clientY - dialog.offsetTop;
+        dialog.style.position = "absolute";
+        dialog.style.margin = 0;
+        document.body.style.userSelect = "none";
+      });
+
+      document.addEventListener("mousemove", (e) => {
+        if (!pmDragState.dragging) return;
+        dialog.style.left = e.clientX - pmDragState.offsetX + "px";
+        dialog.style.top = e.clientY - pmDragState.offsetY + "px";
+      });
+
+      document.addEventListener("mouseup", () => {
+        pmDragState.dragging = false;
+        document.body.style.userSelect = "";
+      });
+    }
+
+    function showToast(message, type = "success") {
+      const container = document.getElementById("toast-container");
+      if (!container) return;
+
+      const toast = document.createElement("div");
+      toast.className = "toast";
+      if (type !== "success") {
+        toast.style.background = "#ff726c";
+      }
+      toast.textContent = message;
+
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.add("visible");
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.remove("visible");
+        setTimeout(() => {
+          container.removeChild(toast);
+        }, 200);
+      }, 2500);
+    }
+
+    function openPriceManager() {
+      const backdrop = document.getElementById("price-manager-backdrop");
+      if (!backdrop) return;
+
+      const dialog = backdrop.querySelector(".modal-dialog");
+      dialog.style.position = "";
+      dialog.style.left = "";
+      dialog.style.top = "";
+      dialog.style.margin = "";
+
+      backdrop.classList.add("visible");
+      backdrop.style.display = "flex";
+
+      enablePriceManagerDragging();
+
+      pmSearchTerm = "";
+      const searchInput = document.getElementById("pm-search-input");
+      if (searchInput) searchInput.value = "";
+
+      loadPriceListsForManager();
+    }
+
+    function closePriceManager() {
+      const backdrop = document.getElementById("price-manager-backdrop");
+      if (!backdrop) return;
+
+      backdrop.classList.remove("visible");
+      backdrop.style.display = "none";
+    }
+
+    function getFilteredPriceLists() {
+      if (!pmSearchTerm) return PRICE_LISTS;
+      const term = pmSearchTerm.toLowerCase();
+      return PRICE_LISTS.filter(pl =>
+        (pl.name || "").toLowerCase().includes(term)
+      );
+    }
+
+    async function loadPriceListsForManager(selectId = null) {
+      try {
+        await fetchPriceLists();
+
+        const container = document.getElementById("pm-price-list-container");
+        container.innerHTML = "";
+
+        const filtered = getFilteredPriceLists();
+
+        if (!filtered.length) {
+          container.textContent = "Прайс-листы не найдены.";
+          pmSelectedId = null;
+          fillPriceManagerForm(null);
+          pmItems = [];
+          pmItemsDirty = false;
+          renderPriceItemsTable();
+          return;
+        }
+
+        if (selectId === null) {
+          selectId = filtered[0].id;
+        }
+        pmSelectedId = selectId;
+
+        filtered.forEach(pl => {
+          const row = document.createElement("div");
+          row.className = "price-list-item";
+          if (pl.id === pmSelectedId) row.classList.add("active");
+
+          const nameSpan = document.createElement("div");
+          nameSpan.className = "price-list-item-name";
+          nameSpan.textContent = pl.name || "Без названия";
+
+          const countSpan = document.createElement("div");
+          countSpan.className = "price-list-item-count";
+          const cnt = typeof pl.items_count === "number" ? pl.items_count : 0;
+          countSpan.textContent = cnt + " поз.";
+
+          row.appendChild(nameSpan);
+          row.appendChild(countSpan);
+
+          row.addEventListener("click", async () => {
+            pmSelectedId = pl.id;
+            renderPriceListsSidebar();
+            fillPriceManagerForm(pl);
+            await loadPriceItemsForCurrentPriceList();
+          });
+
+          container.appendChild(row);
+        });
+
+        const selected = PRICE_LISTS.find(p => p.id === pmSelectedId) || filtered[0];
+        fillPriceManagerForm(selected);
+        renderPriceListsSidebar();
+        await loadPriceItemsForCurrentPriceList();
+      } catch (e) {
+        console.error("Ошибка загрузки прайсов для модалки:", e);
+        alert("Ошибка загрузки списка прайсов");
+      }
+    }
+
+    function renderPriceListsSidebar() {
+      const container = document.getElementById("pm-price-list-container");
+      const rows = container.querySelectorAll(".price-list-item");
+      const filtered = getFilteredPriceLists();
+
+      rows.forEach((row, index) => {
+        const pl = filtered[index];
+        if (!pl) return;
+        if (pl.id === pmSelectedId) {
+          row.classList.add("active");
+        } else {
+          row.classList.remove("active");
+        }
+      });
+    }
+
+    function fillPriceManagerForm(priceList) {
+      const nameInput = document.getElementById("pm-input-name");
+      const descInput = document.getElementById("pm-input-description");
+      const metaEl = document.getElementById("pm-meta");
+
+      if (!priceList) {
+        nameInput.value = "";
+        descInput.value = "";
+        metaEl.textContent = "Товаров в прайсе: 0";
+        return;
+      }
+
+      nameInput.value = priceList.name || "";
+      descInput.value = priceList.description || "";
+
+      const cnt = typeof priceList.items_count === "number" ? priceList.items_count : 0;
+      metaEl.textContent = "Товаров в прайсе: " + cnt;
+    }
+
+    async function loadPriceItemsForCurrentPriceList() {
+      pmItems = [];
+      pmItemsDirty = false;
+      renderPriceItemsTable();
+
+      if (!pmSelectedId) return;
+
+      try {
+        const res = await fetch(apiBase + `/api/prices/${pmSelectedId}/items`);
+        if (!res.ok) throw new Error("Ошибка загрузки товаров прайса");
+        const data = await res.json() || [];
+
+        
+        pmItems = data;
+        pmItemsDirty = false;
+        renderPriceItemsTable();
+      } catch (e) {
+        console.error(e);
+        alert("Не удалось загрузить товары прайса");
+      }
+    }
+
+    
+    function renderPriceItemsTable() {
+      const table = document.getElementById("pm-items-table");
+      if (!table) return;
+
+      if (!pmItems || !pmItems.length) {
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th style="width:40px;">#</th>
+              <th>Товар</th>
+              <th style="width:80px;">Цена</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td colspan="3" style="padding:8px;color:#888;">Нет товаров для отображения.</td>
+            </tr>
+          </tbody>
+        `;
+        return;
+      }
+
+      let html = `
+        <thead>
+          <tr>
+            <th style="width:40px;">#</th>
+            <th>Товар</th>
+            <th style="width:90px;">Цена</th>
+          </tr>
+        </thead>
+        <tbody>
+      `;
+
+      pmItems.forEach((item, index) => {
+        const name = item.product_name || "";
+        const desc = item.product_description || "";
+        const price = item.price != null ? item.price : 0;
+
+        html += `
+          <tr>
+            <td>${index + 1}</td>
+            <td>
+              <div style="font-size:12px;font-weight:500;">${name}</div>
+              ${desc ? `<div style="font-size:11px;color:#888;">${desc}</div>` : ""}
+            </td>
+            <td>
+              <input
+                type="text"
+                class="price-item-price-input"
+                data-index="${index}"
+                value="${formatMoney(price)}"
+              >
+            </td>
+          </tr>
+        `;
+      });
+
+      html += "</tbody>";
+      table.innerHTML = html;
+
+      const inputs = table.querySelectorAll(".price-item-price-input");
+      inputs.forEach(input => {
+        input.addEventListener("focus", () => {
+          const idx = Number(input.dataset.index);
+          const item = pmItems[idx];
+          const num = Number(item.price) || 0;
+          input.value = num.toString().replace(".", ",");
+        });
+
+        input.addEventListener("blur", () => {
+          const idx = Number(input.dataset.index);
+          const item = pmItems[idx];
+          let raw = input.value || "";
+          raw = raw.replace(/\s+/g, "").replace(",", ".");
+          let num = Number(raw);
+          if (isNaN(num)) num = 0;
+          item.price = num;
+          pmItemsDirty = true;
+          input.value = formatMoney(item.price);
+        });
+      });
+    }
+
+    function pmNewPriceList() {
+      pmSelectedId = null;
+      pmItems = [];
+      pmItemsDirty = false;
+      fillPriceManagerForm(null);
+      renderPriceListsSidebar();
+      renderPriceItemsTable();
+    }
+
+    async function pmSavePriceList() {
+      const nameInput = document.getElementById("pm-input-name");
+      const descInput = document.getElementById("pm-input-description");
+
+      const name = (nameInput.value || "").trim();
+      const description = (descInput.value || "").trim();
+
+      if (!name) {
+        alert("Введите название прайса");
+        return;
+      }
+
+      const wasNew = (pmSelectedId == null);
+
+      try {
+        let savedId = pmSelectedId;
+
+        if (pmSelectedId == null) {
+          
+          const res = await fetch(apiBase + "/api/prices/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, description })
+          });
+          if (!res.ok) throw new Error("Ошибка создания прайса");
+          const created = await res.json();
+          savedId = created.id;
+          pmSelectedId = savedId;
+        } else {
+          
+          const res = await fetch(apiBase + `/api/prices/${pmSelectedId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, description })
+          });
+          if (!res.ok) throw new Error("Ошибка сохранения прайса");
+        }
+
+        
+        if (pmItemsDirty && savedId != null) {
+          const resItems = await fetch(apiBase + `/api/prices/${savedId}/items`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items: pmItems })
+          });
+          if (!resItems.ok) throw new Error("Ошибка сохранения цен в прайсе");
+          pmItemsDirty = false;
+        }
+
+        await loadPriceListsForManager(savedId);
+        await fetchPriceLists();
+        renderLines();
+
+        showToast(wasNew ? "Прайс создан" : "Прайс сохранён");
+      } catch (e) {
+        console.error(e);
+        alert(e.message || "Ошибка сохранения прайс-листа");
+      }
+    }
+
+    
+    async function pmCopyPriceList() {
+      if (pmSelectedId == null) {
+        alert("Сначала выберите прайс для копирования");
+        return;
+      }
+      try {
+        const res = await fetch(apiBase + `/api/prices/${pmSelectedId}/copy`, {
+          method: "POST"
+        });
+        if (!res.ok) throw new Error("Ошибка копирования прайса");
+        const created = await res.json();
+        await loadPriceListsForManager(created.id);
+        await fetchPriceLists();
+        showToast("Прайс скопирован");
+      } catch (e) {
+        console.error(e);
+        alert(e.message || "Ошибка копирования прайс-листа");
+      }
+    }
+
+    
+    async function pmDeletePriceList() {
+      if (pmSelectedId == null) {
+        alert("Сначала выберите прайс для удаления");
+        return;
+      }
+
+      const pl = PRICE_LISTS.find(p => p.id === pmSelectedId);
+      const name = pl ? pl.name : pmSelectedId;
+
+      if (!confirm(`Удалить прайс "${name}"? Это действие необратимо.`)) {
+        return;
+      }
+
+      try {
+        const res = await fetch(apiBase + `/api/prices/${pmSelectedId}`, {
+          method: "DELETE"
+        });
+        if (!res.ok) throw new Error("Ошибка удаления прайса");
+
+        pmSelectedId = null;
+        pmItems = [];
+        pmItemsDirty = false;
+
+        await loadPriceListsForManager(null);
+        await fetchPriceLists();
+        renderLines();
+
+        showToast("Прайс удалён");
+      } catch (e) {
+        console.error(e);
+        alert(e.message || "Ошибка удаления прайс-листа");
+      }
+    }
+    
+    
     document.addEventListener("DOMContentLoaded", () => {
       productDropdownEl = document.getElementById("product-dropdown");
       productDropdownListEl = document.getElementById("product-dropdown-list");
@@ -872,9 +1620,42 @@
         renderLines();
       });
 
+      // кнопка "Управление прайсами"
       document.getElementById("btn-manage-prices").addEventListener("click", () => {
-        alert("Здесь будет модальное окно управления прайс-листами.");
+        openPriceManager();
       });
+
+      // кнопки модалки "Управление прайсами"
+      const pmBackdrop = document.getElementById("price-manager-backdrop");
+      const pmBtnClose = document.getElementById("pm-btn-close");
+      const pmBtnCancel = document.getElementById("pm-btn-cancel");
+      const pmBtnNew = document.getElementById("pm-btn-new");
+      const pmBtnSave = document.getElementById("pm-btn-save");
+      const pmBtnCopy = document.getElementById("pm-btn-copy");
+      const pmBtnDelete = document.getElementById("pm-btn-delete");
+      const pmSearchInput = document.getElementById("pm-search-input");
+
+      if (pmBtnClose) pmBtnClose.addEventListener("click", closePriceManager);
+      if (pmBtnCancel) pmBtnCancel.addEventListener("click", closePriceManager);
+      if (pmBackdrop) {
+        pmBackdrop.addEventListener("click", (e) => {
+          if (e.target === pmBackdrop) {
+            closePriceManager();
+          }
+        });
+      }
+      if (pmBtnNew) pmBtnNew.addEventListener("click", pmNewPriceList);
+      if (pmBtnSave) pmBtnSave.addEventListener("click", pmSavePriceList);
+      if (pmBtnCopy) pmBtnCopy.addEventListener("click", pmCopyPriceList);
+      if (pmBtnDelete) pmBtnDelete.addEventListener("click", pmDeletePriceList);
+
+      if (pmSearchInput) {
+        pmSearchInput.addEventListener("input", (e) => {
+          pmSearchTerm = e.target.value || "";
+          loadPriceListsForManager(pmSelectedId);
+        });
+      }
+
 
       document.getElementById("btn-cancel").addEventListener("click", () => {
         if (window.BX24 && BX24.closeApplication) {
