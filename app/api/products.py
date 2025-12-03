@@ -1,8 +1,9 @@
-from flask import Blueprint, jsonify, request
+import os
+from flask import Blueprint, jsonify, request, abort, current_app
 from app.services.product_service import ProductService
+from app.services.price_service import PriceService
 
 products_bp = Blueprint("products_bp", __name__)
-
 
 @products_bp.route("/", methods=["GET"])
 def list_products():
@@ -25,9 +26,16 @@ def list_products():
         for p in products
     ])
 
-
 @products_bp.route("/sync", methods=["POST"])
 def sync_products():
     
     result = ProductService.sync_products_from_bitrix()
+
+    created = result.get("created", []) or []
+    for item in created:
+        PriceService.add_product_to_all_price_lists(
+            item["id"],
+            default_price=item.get("price", 0) or 0,
+        )
+
     return jsonify(result)

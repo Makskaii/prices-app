@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+
 from app.database import db
 from app.models.price_item import PriceListItem
 from app.models.price_list import PriceList
@@ -21,7 +22,8 @@ def list_price_lists():
             "description": pl.description,
             "created_at": pl.created_at.isoformat() if pl.created_at else None,
             "updated_at": pl.updated_at.isoformat() if pl.updated_at else None,
-            "items_count": len(pl.items) if hasattr(pl, "items") else None,
+            
+            "items_count": getattr(pl, "items_count", len(pl.items) if hasattr(pl, "items") else None),
         })
 
     return jsonify(data)
@@ -94,7 +96,6 @@ def delete_price_list(pl_id):
 
 @prices_bp.route("/<int:pl_id>/copy", methods=["POST"])
 def copy_price_list(pl_id):
-    
     data = request.get_json(silent=True) or {}
     new_name = data.get("name")
 
@@ -125,7 +126,6 @@ def get_product_price(pl_id):
 
 @prices_bp.route("/<int:pl_id>/items/<product_id>", methods=["PUT"])
 def update_price_item(pl_id, product_id):
-    
     data = request.get_json() or {}
     if "price" not in data:
         return jsonify({"error": "price is required"}), 400
@@ -158,20 +158,24 @@ def update_price_item(pl_id, product_id):
 
 @prices_bp.route("/<int:pl_id>/items", methods=["GET"])
 def get_price_list_items(pl_id):
-    
     pl = PriceList.query.get(pl_id)
     if not pl:
         return jsonify({"error": "not found"}), 404
 
     rows = (
         db.session.query(
-            PriceListItem.product_id,
+            Product.id.label("product_id"),
             Product.name.label("product_name"),
             Product.description.label("product_description"),
             PriceListItem.price,
         )
-        .join(Product, Product.id == PriceListItem.product_id)
-        .filter(PriceListItem.price_list_id == pl_id)
+        .outerjoin(
+            PriceListItem,
+            and_(
+                PriceListItem.product_id == Product.id,
+                PriceListItem.price_list_id == pl_id,
+            ),
+        )
         .order_by(Product.name.asc())
         .all()
     )
@@ -190,7 +194,6 @@ def get_price_list_items(pl_id):
 
 @prices_bp.route("/<int:pl_id>/items", methods=["PUT"])
 def bulk_update_price_list_items(pl_id):
-    
     pl = PriceList.query.get(pl_id)
     if not pl:
         return jsonify({"error": "not found"}), 404
@@ -234,3 +237,18 @@ def bulk_update_price_list_items(pl_id):
         "status": "ok",
         "items_count": len(new_items),
     })
+
+
+@prices_bp.route("/sync-product/<int:product_id>", methods=["POST"])
+def sync_product_to_all_price_lists(product_id):
+    
+    product = Product.query.get(product_id)
+    if not product:
+        return jsonify({"error": "product not found"}), 404
+
+    PriceService.add_product_to_all_price_lists(
+        product_id=product.id,
+        default_price=product.price or 0
+    )
+
+    return jsonify({"status": "ok", "product_id": product.id})

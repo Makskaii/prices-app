@@ -253,15 +253,16 @@
       width: 100%;
       border-collapse: collapse;
       font-size: 12px;
-      table-layout: fixed;        /* фиксированная раскладка */
+      table-layout: fixed;
     }
 
-    .price-items-table th,
-    .price-items-table td {
-      padding: 4px 6px;
-      border-bottom: 1px solid #eef1f4;
-      text-align: left;
-      vertical-align: middle;
+    .price-items-table th:nth-child(1) { width: 40px; }
+    .price-items-table th:nth-child(2) { width: 160px; }
+    .price-items-table th:nth-child(3) { width: auto; }
+
+    .price-items-table td:nth-child(2) {
+      width: 160px;
+      min-width: 160px;           
     }
 
     .price-items-table tbody tr:nth-child(even) {
@@ -851,7 +852,7 @@
     // -------- Состояние приложения (для сохранения в сделку) --------
 
     function getAppStateForSave() {
-      // сохраняем только нужные поля по строкам
+      
       const cleanLines = lines.map(l => ({
         productId: l.productId,
         productName: l.productName,
@@ -1385,7 +1386,7 @@
               console.warn("Ошибка обработки BX24.placement.info():", e);
             }
 
-            // 2) Дополнительно дергаем placement.getData (как раньше)
+            // 2) Дополнительно дергаем placement.getData
             BX24.callMethod("placement.getData", {}, function(res) {
               if (res.error()) {
                 console.error("placement.getData error:", res.error());

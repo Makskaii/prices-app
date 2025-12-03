@@ -1,4 +1,3 @@
-# app/services/price_service.py
 from datetime import datetime
 from app.database import db
 from app.models.price_list import PriceList
@@ -94,3 +93,32 @@ class PriceService:
             product_id=product_id
         ).first()
         return item.price if item else None
+
+    @staticmethod
+    def add_product_to_all_price_lists(product_id: int, default_price: float = 0):
+        
+        price_lists = PriceList.query.all()
+
+        existing_items = PriceListItem.query.filter_by(product_id=product_id).all()
+        existing_by_price_list = {item.price_list_id for item in existing_items}
+
+        new_items = []
+
+        for pl in price_lists:
+            if pl.id not in existing_by_price_list:
+                new_items.append(
+                    PriceListItem(
+                        price_list_id=pl.id,
+                        product_id=product_id,
+                        price=default_price,
+                    )
+                )
+
+        if new_items:
+            db.session.add_all(new_items)
+
+        
+        for pl in price_lists:
+            pl.items_count = PriceListItem.query.filter_by(price_list_id=pl.id).count()
+
+        db.session.commit()

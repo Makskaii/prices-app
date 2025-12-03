@@ -3,7 +3,7 @@ import requests
 
 BITRIX_WEBHOOK = os.getenv("BITRIX_WEBHOOK_URL")
 
-SESSION = requests.Session()  # быстрее при множественных запросах
+SESSION = requests.Session()
 
 
 def _request(method: str, url: str, params: dict | None = None, http_method: str = "POST"):
