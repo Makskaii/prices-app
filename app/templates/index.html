@@ -56,6 +56,31 @@
       border: 1px solid var(--bx-border);
     }
 
+    .modal-drag-edge {
+      position: absolute;
+      z-index: 5;
+      cursor: move;
+    }
+
+    /* левая/правая ручка */
+    .modal-drag-left,
+    .modal-drag-right {
+      top: 0;
+      width: 10px;
+      height: 100%;
+    }
+
+    .modal-drag-left { left: 0; }
+    .modal-drag-right { right: 0; }
+
+    /* нижняя ручка */
+    .modal-drag-bottom {
+      left: 0;
+      bottom: 0;
+      width: 100%;
+      height: 10px;
+    }
+
     .modal-header {
       padding: 10px 14px;
       border-bottom: 1px solid #e1e6ec;
@@ -257,12 +282,12 @@
     }
 
     .price-items-table th:nth-child(1) { width: 40px; }
-    .price-items-table th:nth-child(2) { width: 160px; }
+    .price-items-table th:nth-child(2) { width: 100px; }
     .price-items-table th:nth-child(3) { width: auto; }
 
     .price-items-table td:nth-child(2) {
-      width: 160px;
-      min-width: 160px;           
+      width: 60px;
+      min-width: 60px;           
     }
 
     .price-items-table tbody tr:nth-child(even) {
@@ -272,7 +297,7 @@
     .price-item-price-input {
       width: 100%;
       box-sizing: border-box;
-      padding: 6px 10px;
+      padding: 4px 6px;
       font-size: 12px;
       border-radius: 4px;
       border: 1px solid #c5ced8;
@@ -304,16 +329,15 @@
       transform: translateY(0);
     }
 
-    /* чуть-чуть больше иконка */
     .toast-icon {
-      width: 22px;
-      height: 22px;
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
       border: 2px solid rgba(255,255,255,0.85);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 15px;     /* сама «галочка»/«!» чуть больше */
+      font-size: 15px;    
       font-weight: 700;
     }
 
@@ -321,7 +345,6 @@
       line-height: 1.4;
     }
 
-    /* вариант для ошибок (если понадобится) */
     .toast-error {
       background: #ff726c;
     }
@@ -368,6 +391,26 @@
       gap: 4px;
       white-space: nowrap;
       transition: background 0.15s, box-shadow 0.15s, transform 0.05s;
+    }
+
+    .btn-light {
+      background: #f5f5f5;
+      border-color: #dcdcdc;
+    }
+
+    .btn-icon-sync {
+      padding: 6px 8px;
+      min-width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .btn-icon-sync:active {
+      transform: translateY(1px);
     }
 
     .btn:hover:not(:disabled) { background: #f3f6fb; }
@@ -540,9 +583,9 @@
       background: #fff;
       border-radius: 4px;
       border: 1px solid #c5ced8;
-      box-shadow: 0 4px 10px rgb(255, 255, 255);
-      max-height: 600px;
-      min-width: 320px;  
+      box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+      max-height: calc(100vh - 200px);
+      min-width: 280px;
       display: none;
       overflow: hidden;
       font-size: 13px;
@@ -568,8 +611,8 @@
     }
 
     .product-dropdown-list {
-      max-height: 500px;
-      overflow: auto;
+      max-height: calc(100vh - 240px);
+      overflow-y: auto;
     }
 
     .product-row {
@@ -603,6 +646,7 @@
         <div class="toolbar-top-left">
           <button class="btn btn-primary" id="btn-add-row">+ Добавить товар</button>
           <button class="btn btn-danger" id="btn-delete-selected" disabled>Удалить выбранные</button>
+          <button class="btn btn-light btn-icon-sync" id="btn-sync-products" title="Синхронизировать товары из Битрикс">🔄</button>
         </div>
         <div class="toolbar-top-right">
           <span class="tag" id="tag-deal-info">Сделка: неизвестно</span>
@@ -734,6 +778,10 @@
         <button class="btn" id="pm-btn-cancel">Закрыть</button>
         <button class="btn btn-success" id="pm-btn-save">Сохранить</button>
       </div>
+
+      <div class="modal-drag-edge modal-drag-left"></div>
+      <div class="modal-drag-edge modal-drag-right"></div>
+      <div class="modal-drag-edge modal-drag-bottom"></div>
     </div>
   </div>
 
@@ -907,6 +955,45 @@
       );
     }
 
+    async function syncProductsFromBitrix() {
+      const btn = document.getElementById("btn-sync-products");
+
+      try {
+        clearError();
+        if (btn) btn.disabled = true;
+
+        const res = await fetch(apiBase + "/api/products/sync", {
+          method: "POST",
+        });
+
+        if (!res.ok) {
+          throw new Error("Ошибка синхронизации товаров");
+        }
+
+        const data = await res.json();
+
+        await fetchProducts();
+
+        const createdCount =
+          (data && data.new) ||
+          (data && data.created && data.created.length) ||
+          0;
+        const deletedCount = (data && data.deleted) || 0;
+
+        if (typeof showToast === "function") {
+          showToast(
+            `Синхронизация завершена. Новых: ${createdCount}, удалено: ${deletedCount}.`,
+            "success"
+          );
+        }
+      } catch (e) {
+        console.error(e);
+        showError(e.message || "Не удалось синхронизировать товары");
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
     async function fetchPriceLists() {
       const res = await fetch(apiBase + "/api/prices/");
       if (!res.ok) throw new Error("Ошибка загрузки прайсов");
@@ -941,18 +1028,21 @@
       const top = rect.bottom + window.scrollY;
       const left = rect.left + window.scrollX;
 
-      const extraWidth = 60;
+      // чуть шире инпута
+      const extraWidth = 40;
       productDropdownEl.style.width = (rect.width + extraWidth) + "px";
       productDropdownEl.style.left = left + "px";
       productDropdownEl.style.top = top + "px";
 
       productSearchInputEl.value = "";
       renderProductDropdownList("");
-      
+
       productDropdownEl.style.display = "block";
       productDropdownEl.classList.add("visible");
+
       setTimeout(() => productSearchInputEl.focus(), 10);
     }
+
 
 
     function closeProductDropdown() {
@@ -1196,7 +1286,7 @@
     }
 
     function loadDealState() {
-  // сначала пробуем прочитать из localStorage (быстрее и не зависит от UF-поля)
+  
       if (CURRENT_DEAL_ID) {
         try {
           const localKey = LOCAL_STATE_PREFIX + CURRENT_DEAL_ID;
@@ -1204,7 +1294,7 @@
           if (localRaw) {
             const localState = JSON.parse(localRaw);
             applyAppState(localState);
-            // дальше всё равно попробуем взять из сделки — оно приоритетнее
+            
           }
         } catch (e) {
           console.warn("Ошибка чтения состояния из localStorage:", e);
@@ -1222,7 +1312,7 @@
         const rawState = deal[DEAL_STATE_FIELD];
 
         if (!rawState) {
-          // если поля нет или оно пустое — остаётся состояние из localStorage (если было)
+          
           return;
         }
 
@@ -1254,12 +1344,12 @@
 
               let dealId = null;
 
-              // 1) Прямые поля
+              
               if (raw.ID || raw.DEAL_ID || raw.ENTITY_ID || raw.entityId || raw.dealId) {
                 dealId = raw.ID || raw.DEAL_ID || raw.ENTITY_ID || raw.entityId || raw.dealId;
               }
 
-              // 2) PLACEMENT_OPTIONS (часто именно тут лежит ID)
+              
               if (!dealId && raw.PLACEMENT_OPTIONS) {
                 let opts = raw.PLACEMENT_OPTIONS;
                 try {
@@ -1284,7 +1374,7 @@
                 console.log("PLACEMENT_OPTIONS parsed:", opts, "dealId:", dealId);
               }
 
-              // 3) Иногда данные ещё и в raw.options
+              
               if (!dealId && raw.options) {
                 let opts = raw.options;
                 try {
@@ -1309,7 +1399,7 @@
                 console.log("options parsed:", opts, "dealId:", dealId);
               }
 
-              // 4) Фоллбек для разработки — ID из query-параметров URL
+              
               if (!dealId && window.location && window.location.search) {
                 const m = window.location.search.match(/[?&](deal_id|DEAL_ID|ID)=(\d+)/i);
                 if (m) {
@@ -1318,7 +1408,7 @@
                 }
               }
 
-              // Нормализуем ID (оставляем цифры)
+              
               if (dealId) {
                 const digits = String(dealId).match(/\d+/);
                 CURRENT_DEAL_ID = digits ? digits[0] : String(dealId);
@@ -1350,7 +1440,7 @@
 
         BX24.ready(function() {
           BX24.init(function() {
-            // 1) Попробуем через placement.info() (часто там уже есть ID)
+            
             try {
               if (BX24.placement && BX24.placement.info) {
                 const info = BX24.placement.info();
@@ -1386,7 +1476,7 @@
               console.warn("Ошибка обработки BX24.placement.info():", e);
             }
 
-            // 2) Дополнительно дергаем placement.getData
+            
             BX24.callMethod("placement.getData", {}, function(res) {
               if (res.error()) {
                 console.error("placement.getData error:", res.error());
@@ -1466,7 +1556,7 @@
 
               const tagEl = document.getElementById("tag-deal-info");
 
-              // 3) Если всё равно не нашли — спросим у пользователя вручную
+              
               if (!CURRENT_DEAL_ID) {
                 console.warn("Не удалось автоматически определить ID сделки.");
                 const manual = window.prompt(
@@ -1493,8 +1583,6 @@
           });
         });
       }
-
-
 
     async function initApp() {
       clearError();
@@ -1535,14 +1623,23 @@
       if (!backdrop) return;
       const dialog = backdrop.querySelector(".modal-dialog");
       const header = dialog.querySelector(".modal-header");
+      const edges = dialog.querySelectorAll(".modal-drag-edge");
 
-      header.addEventListener("mousedown", (e) => {
+      const startDrag = (e) => {
+        if (e.button !== 0) return;
         pmDragState.dragging = true;
         pmDragState.offsetX = e.clientX - dialog.offsetLeft;
         pmDragState.offsetY = e.clientY - dialog.offsetTop;
         dialog.style.position = "absolute";
         dialog.style.margin = 0;
         document.body.style.userSelect = "none";
+      };
+
+      if (header) {
+        header.addEventListener("mousedown", startDrag);
+      }
+      edges.forEach(edge => {
+        edge.addEventListener("mousedown", startDrag);
       });
 
       document.addEventListener("mousemove", (e) => {
@@ -1556,6 +1653,7 @@
         document.body.style.userSelect = "";
       });
     }
+
 
     function showToast(message, type = "success") {
     const container = document.getElementById("toast-container");
@@ -1749,7 +1847,6 @@
       }
     }
 
-    
     function renderPriceItemsTable() {
       const table = document.getElementById("pm-items-table");
       if (!table) return;
@@ -1761,7 +1858,7 @@
           <thead>
             <tr>
               <th style="width:40px;">#</th>
-              <th style="width:220px;">Цена</th>
+              <th style="width:110px;">Цена</th>
               <th>Товар</th>
             </tr>
           </thead>
@@ -1779,7 +1876,7 @@
         <thead>
           <tr>
             <th style="width:40px;">#</th>
-            <th style="width:220px;">Цена</th>
+            <th style="width:110px;">Цена</th>
             <th>Товар</th>
           </tr>
         </thead>
@@ -1989,7 +2086,6 @@
         }
       });
 
-      // Добавить строку
       document.getElementById("btn-add-row").addEventListener("click", () => {
         const line = createEmptyLine();
         lines.push(line);
@@ -1997,7 +2093,6 @@
         renderLines();
       });
 
-      // Удалить выбранные
       document.getElementById("btn-delete-selected").addEventListener("click", () => {
         lines = lines.filter(l => !l.selected);
         if (lines.length === 0) {
@@ -2006,6 +2101,13 @@
         recalcAll();
         renderLines();
       });
+
+      const btnSync = document.getElementById("btn-sync-products");
+      if (btnSync) {
+        btnSync.addEventListener("click", () => {
+          syncProductsFromBitrix();
+        });
+      }
 
       // Пересчитать выбранные
       document.getElementById("btn-recalc-selected").addEventListener("click", async () => {
