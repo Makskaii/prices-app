@@ -48,37 +48,13 @@
       background: #fff;
       border-radius: 8px;
       box-shadow: 0 8px 24px rgba(0,0,0,0.25);
-      min-width: 960px;
-      max-width: 1100px;
-      max-height: 90vh;
+      min-width: 600px;
+      min-height: 150px; 
       display: flex;
       flex-direction: column;
       border: 1px solid var(--bx-border);
-    }
 
-    .modal-drag-edge {
-      position: absolute;
-      z-index: 5;
-      cursor: move;
-    }
-
-    /* левая/правая ручка */
-    .modal-drag-left,
-    .modal-drag-right {
-      top: 0;
-      width: 10px;
-      height: 100%;
-    }
-
-    .modal-drag-left { left: 0; }
-    .modal-drag-right { right: 0; }
-
-    /* нижняя ручка */
-    .modal-drag-bottom {
-      left: 0;
-      bottom: 0;
-      width: 100%;
-      height: 10px;
+      position: absolute; 
     }
 
     .modal-header {
@@ -123,6 +99,75 @@
       display: flex;
       justify-content: flex-end;
       gap: 8px;
+    }
+
+    .modal-resize-handle {
+      position: absolute;
+      z-index: 10;
+    }
+
+    .resize-right {
+      top: 8px;
+      right: 0;
+      width: 8px;
+      height: calc(100% - 16px);
+      cursor: ew-resize;
+    }
+
+    .resize-left {
+      top: 8px;
+      left: 0;
+      width: 8px;
+      height: calc(100% - 16px);
+      cursor: ew-resize;
+    }
+
+    .resize-top {
+      top: 0;
+      left: 8px;
+      width: calc(100% - 16px);
+      height: 8px;
+      cursor: ns-resize;
+    }
+
+    .resize-bottom {
+      bottom: 0;
+      left: 8px;
+      width: calc(100% - 16px);
+      height: 8px;
+      cursor: ns-resize;
+    }
+
+    .resize-corner-rt,
+    .resize-corner-rb,
+    .resize-corner-lt,
+    .resize-corner-lb {
+      width: 12px;
+      height: 12px;
+    }
+
+    .resize-corner-rt {
+      top: 0;
+      right: 0;
+      cursor: ne-resize;
+    }
+
+    .resize-corner-rb {
+      bottom: 0;
+      right: 0;
+      cursor: nwse-resize;
+    }
+
+    .resize-corner-lt {
+      top: 0;
+      left: 0;
+      cursor: nw-resize;
+    }
+
+    .resize-corner-lb {
+      bottom: 0;
+      left: 0;
+      cursor: nesw-resize;
     }
 
     .price-list-sidebar {
@@ -779,9 +824,15 @@
         <button class="btn btn-success" id="pm-btn-save">Сохранить</button>
       </div>
 
-      <div class="modal-drag-edge modal-drag-left"></div>
-      <div class="modal-drag-edge modal-drag-right"></div>
-      <div class="modal-drag-edge modal-drag-bottom"></div>
+      <div class="modal-resize-handle resize-right"></div>
+      <div class="modal-resize-handle resize-bottom"></div>
+      <div class="modal-resize-handle resize-left"></div>
+      <div class="modal-resize-handle resize-top"></div>
+      <div class="modal-resize-handle resize-corner-rt"></div>
+      <div class="modal-resize-handle resize-corner-rb"></div>
+      <div class="modal-resize-handle resize-corner-lt"></div>
+      <div class="modal-resize-handle resize-corner-lb"></div>
+
     </div>
   </div>
 
@@ -1612,6 +1663,9 @@
     let pmSearchTerm = "";        
     let pmItems = [];            
     let pmItemsDirty = false;    
+    let pmIsDragging = false;
+    let pmIsResizing = false;
+    let pmDragResizeInited = false;
     let pmDragState = {
       dragging: false,
       offsetX: 0,
@@ -1623,37 +1677,238 @@
       if (!backdrop) return;
       const dialog = backdrop.querySelector(".modal-dialog");
       const header = dialog.querySelector(".modal-header");
-      const edges = dialog.querySelectorAll(".modal-drag-edge");
+      if (!header) return;
 
-      const startDrag = (e) => {
+      const dragState = {
+        offsetX: 0,
+        offsetY: 0,
+      };
+
+      const isResizeHandle = (target) => {
+        return target.closest(".modal-resize-handle") !== null;
+      };
+
+      header.addEventListener("mousedown", (e) => {
         if (e.button !== 0) return;
-        pmDragState.dragging = true;
-        pmDragState.offsetX = e.clientX - dialog.offsetLeft;
-        pmDragState.offsetY = e.clientY - dialog.offsetTop;
+        if (e.target.closest(".modal-close-btn")) return;
+        if (isResizeHandle(e.target)) return;
+        if (pmIsResizing) return;
+
+        pmIsDragging = true;
+        dragState.offsetX = e.clientX - dialog.offsetLeft;
+        dragState.offsetY = e.clientY - dialog.offsetTop;
         dialog.style.position = "absolute";
         dialog.style.margin = 0;
         document.body.style.userSelect = "none";
+      });
+
+      const stopDrag = () => {
+        pmIsDragging = false;
+        document.body.style.userSelect = "";
       };
 
-      if (header) {
-        header.addEventListener("mousedown", startDrag);
-      }
-      edges.forEach(edge => {
-        edge.addEventListener("mousedown", startDrag);
-      });
+      window.addEventListener("mouseup", stopDrag);
+      window.addEventListener("blur", stopDrag);
+      document.addEventListener("mouseleave", stopDrag);
 
       document.addEventListener("mousemove", (e) => {
-        if (!pmDragState.dragging) return;
-        dialog.style.left = e.clientX - pmDragState.offsetX + "px";
-        dialog.style.top = e.clientY - pmDragState.offsetY + "px";
-      });
-
-      document.addEventListener("mouseup", () => {
-        pmDragState.dragging = false;
-        document.body.style.userSelect = "";
+        if (!pmIsDragging) return;
+        dialog.style.left = e.clientX - dragState.offsetX + "px";
+        dialog.style.top = e.clientY - dragState.offsetY + "px";
       });
     }
 
+
+    function enablePriceManagerResizing() {
+      const backdrop = document.getElementById("price-manager-backdrop");
+      if (!backdrop) return;
+      const dialog = backdrop.querySelector(".modal-dialog");
+
+      
+      const MIN_WIDTH = 600;
+      const MIN_HEIGHT = 150;
+
+      let resizing = false;
+      let mode = null;
+
+      let startX, startY;
+      let startWidth, startHeight;
+      let startLeft, startTop;
+
+      const startResize = (e, resizeMode) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+
+        resizing = true;
+        pmIsResizing = true;
+        mode = resizeMode;
+
+        startX = e.clientX;
+        startY = e.clientY;
+        startWidth = dialog.offsetWidth;
+        startHeight = dialog.offsetHeight;
+        startLeft = dialog.offsetLeft;
+        startTop = dialog.offsetTop;
+
+        document.body.style.userSelect = "none";
+      };
+
+      const stopResize = () => {
+        if (!resizing) return;
+        resizing = false;
+        pmIsResizing = false;
+        document.body.style.userSelect = "";
+      };
+
+      window.addEventListener("mouseup", stopResize);
+      window.addEventListener("blur", stopResize);
+      document.addEventListener("mouseleave", stopResize);
+
+      document.addEventListener("mousemove", (e) => {
+        if (!resizing) return;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        let newWidth = startWidth;
+        let newHeight = startHeight;
+        let newLeft = startLeft;
+        let newTop = startTop;
+
+        switch (mode) {
+          case "right":
+
+            newWidth = Math.max(MIN_WIDTH, startWidth + dx);
+            break;
+
+          case "left": {
+
+            const rightEdge = startLeft + startWidth;
+
+            let candidateLeft = startLeft + dx;
+            let candidateWidth = rightEdge - candidateLeft;
+
+            if (candidateWidth < MIN_WIDTH) {
+              candidateWidth = MIN_WIDTH;
+              candidateLeft = rightEdge - MIN_WIDTH;
+            }
+
+            newLeft = candidateLeft;
+            newWidth = candidateWidth;
+            break;
+          }
+
+          case "bottom":
+            newHeight = Math.max(MIN_HEIGHT, startHeight + dy);
+            break;
+
+          case "top": {
+            let candidateTop = startTop + dy;
+            let candidateHeight = startHeight - dy;
+
+            if (candidateHeight < MIN_HEIGHT) {
+              candidateHeight = MIN_HEIGHT;
+              candidateTop = startTop + (startHeight - MIN_HEIGHT);
+            }
+
+            newTop = candidateTop;
+            newHeight = candidateHeight;
+            break;
+          }
+
+          // УГЛЫ
+
+          case "corner-rb": // правый-нижний
+            newWidth = Math.max(MIN_WIDTH, startWidth + dx);
+            newHeight = Math.max(MIN_HEIGHT, startHeight + dy);
+            break;
+
+          case "corner-rt": { // правый-верхний
+            newWidth = Math.max(MIN_WIDTH, startWidth + dx);
+
+            let candidateTop = startTop + dy;
+            let candidateHeight = startHeight - dy;
+
+            if (candidateHeight < MIN_HEIGHT) {
+              candidateHeight = MIN_HEIGHT;
+              candidateTop = startTop + (startHeight - MIN_HEIGHT);
+            }
+
+            newTop = candidateTop;
+            newHeight = candidateHeight;
+            break;
+          }
+
+          case "corner-lb": { // левый-нижний
+            const rightEdge = startLeft + startWidth;
+
+            let candidateLeft = startLeft + dx;
+            let candidateWidth = rightEdge - candidateLeft;
+
+            if (candidateWidth < MIN_WIDTH) {
+              candidateWidth = MIN_WIDTH;
+              candidateLeft = rightEdge - MIN_WIDTH;
+            }
+
+            newLeft = candidateLeft;
+            newWidth = candidateWidth;
+            newHeight = Math.max(MIN_HEIGHT, startHeight + dy);
+            break;
+          }
+
+          case "corner-lt": { // левый-верхний
+            const rightEdge = startLeft + startWidth;
+
+            let candidateLeft = startLeft + dx;
+            let candidateWidth = rightEdge - candidateLeft;
+
+            if (candidateWidth < MIN_WIDTH) {
+              candidateWidth = MIN_WIDTH;
+              candidateLeft = rightEdge - MIN_WIDTH;
+            }
+
+            newLeft = candidateLeft;
+            newWidth = candidateWidth;
+
+            let candidateTop = startTop + dy;
+            let candidateHeight = startHeight - dy;
+
+            if (candidateHeight < MIN_HEIGHT) {
+              candidateHeight = MIN_HEIGHT;
+              candidateTop = startTop + (startHeight - MIN_HEIGHT);
+            }
+
+            newTop = candidateTop;
+            newHeight = candidateHeight;
+            break;
+          }
+        }
+
+        dialog.style.width = newWidth + "px";
+        dialog.style.height = newHeight + "px";
+        dialog.style.left = newLeft + "px";
+        dialog.style.top = newTop + "px";
+      });
+
+      // привязка хэндлов
+      dialog.querySelector(".resize-right")
+        .addEventListener("mousedown", (e) => startResize(e, "right"));
+      dialog.querySelector(".resize-left")
+        .addEventListener("mousedown", (e) => startResize(e, "left"));
+      dialog.querySelector(".resize-bottom")
+        .addEventListener("mousedown", (e) => startResize(e, "bottom"));
+      dialog.querySelector(".resize-top")
+        .addEventListener("mousedown", (e) => startResize(e, "top"));
+
+      dialog.querySelector(".resize-corner-rb")
+        .addEventListener("mousedown", (e) => startResize(e, "corner-rb"));
+      dialog.querySelector(".resize-corner-rt")
+        .addEventListener("mousedown", (e) => startResize(e, "corner-rt"));
+      dialog.querySelector(".resize-corner-lb")
+        .addEventListener("mousedown", (e) => startResize(e, "corner-lb"));
+      dialog.querySelector(".resize-corner-lt")
+        .addEventListener("mousedown", (e) => startResize(e, "corner-lt"));
+    }
 
     function showToast(message, type = "success") {
     const container = document.getElementById("toast-container");
@@ -1697,15 +1952,36 @@
       if (!backdrop) return;
 
       const dialog = backdrop.querySelector(".modal-dialog");
-      dialog.style.position = "";
-      dialog.style.left = "";
-      dialog.style.top = "";
-      dialog.style.margin = "";
 
       backdrop.classList.add("visible");
       backdrop.style.display = "flex";
 
-      enablePriceManagerDragging();
+      pmIsDragging = false;
+      pmIsResizing = false;
+
+      const START_WIDTH = 900;
+      const START_HEIGHT = 500;
+
+      dialog.style.position = "absolute";
+      dialog.style.margin = 0;
+      dialog.style.width = START_WIDTH + "px";
+      dialog.style.height = START_HEIGHT + "px";
+
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const rect = dialog.getBoundingClientRect();
+
+      const left = Math.max((vw - rect.width) / 2, 20);
+      const top = Math.max((vh - rect.height) / 2, 20);
+
+      dialog.style.left = left + "px";
+      dialog.style.top = top + "px";
+
+      if (!pmDragResizeInited) {
+          enablePriceManagerDragging();
+          enablePriceManagerResizing();
+          pmDragResizeInited = true;
+        }
 
       pmSearchTerm = "";
       const searchInput = document.getElementById("pm-search-input");
@@ -1914,7 +2190,7 @@
 
       const inputs = table.querySelectorAll(".price-item-price-input");
       inputs.forEach(input => {
-        input.style.width = "100%"; // дополнительно "раздуем" само поле
+        input.style.width = "100%";
 
         input.addEventListener("focus", () => {
           const idx = Number(input.dataset.index);
@@ -2139,6 +2415,7 @@
       if (pmBtnCancel) pmBtnCancel.addEventListener("click", closePriceManager);
       if (pmBackdrop) {
         pmBackdrop.addEventListener("click", (e) => {
+          if (pmIsDragging || pmIsResizing) return;
           if (e.target === pmBackdrop) {
             closePriceManager();
           }
