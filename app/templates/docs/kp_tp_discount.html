@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm 15mm 18mm 20mm;
+    }
+    body {
+      margin: 15mm 15mm 18mm 15mm; /* чуть уже поля, как в DOC */
+      font-family: "Times New Roman", serif;
+      font-size: 11pt;
+      color: #000;
+    }
+    .header-top {
+      width: 100%;
+      border-bottom: 2px solid #4472C4;
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+    }
+    .header-top td {
+      vertical-align: top;
+      font-size: 9pt;
+      line-height: 1.3;
+    }
+    .header-left { width: 65%; }
+    .header-right {
+      width: 35%;
+      text-align: right;
+      font-size: 8pt;
+    }
+    .company-name {
+      font-weight: 700;
+      font-size: 10pt;
+      text-transform: uppercase;
+    }
+    h1.doc-title {
+      text-align: center;
+      font-size: 16pt;
+      margin: 12pt 0 10pt 0;
+      font-weight: bold;
+    }
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 6px 0 10px;
+      font-size: 10pt;
+    }
+    .meta-table td { padding: 2px 0; }
+    .meta-label { width: 28%; }
+    .meta-value { border-bottom: 1px solid #000; }
+
+    .section-title {
+      text-align: center;
+      font-weight: 700;
+      margin: 10px 0 6px;
+    }
+    .section-subtitle {
+      text-align: center;
+      margin-bottom: 6px;
+      font-size: 10pt;
+    }
+
+    table.kp-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9pt;
+      margin-top: 6px;
+    }
+    table.kp-table th,
+    table.kp-table td {
+      border: 1px solid #2F528F;
+      padding: 4px 3px;
+      vertical-align: middle;
+    }
+    table.kp-table th {
+      background: #D9E2F3;
+      text-align: center;
+      font-weight: 700;
+    }
+
+    .col-num   { width: 18px; }
+    .col-name  { width: 42%; }
+    .col-qty   { width: 40px; }
+    .col-price { width: 55px; }
+    .col-sum   { width: 65px; }
+    .col-sum-disc { width: 70px; }
+    .col-vat   { width: 55px; }
+    .col-sum-vat { width: 75px; }
+
+    .text-right  { text-align: right; }
+    .text-center { text-align: center; }
+
+    .total-row td {
+      font-weight: 700;
+      background: #E2EFDA;
+    }
+
+    .footer-note {
+      margin-top: 10px;
+      font-size: 9pt;
+    }
+    .prepared-by {
+      margin-top: 12px;
+      font-size: 9pt;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Шапка с реквизитами и логотипом -->
+  <table class="header-top">
+    <tr>
+      <td class="header-left">
+        <div class="company-name">НАУЧНО-ПРОИЗВОДСТВЕННЫЙ ЦЕНТР «ГЕОТЕК»</div>
+        <div>450015, Республика Башкортостан, г. Уфа, ул. Карла Маркса, 37, корп. 4, к.514</div>
+        <div>Тел./факс: (347) 291-12-06, 291-12-07</div>
+        <div>E-mail: prime@geoter.ru</div>
+        <div>Web: http://www.primegeo.ru</div>
+      </td>
+      <td class="header-right">
+        <table class="requisites">
+          <tr><td>Регистрирующий орган:</td><td>ИФНС России по Ленинскому району г.&nbsp;Уфы</td></tr>
+          <tr><td>ОГРН:</td><td>1080275002389, дата регистрации: 23 июля 2008 г.</td></tr>
+          <tr><td>ИНН / КПП:</td><td>0275056098 / 027501001</td></tr>
+          <tr><td>р/с:</td><td>40702810530620006390<br>в филиале «Центральный» банка ВТБ (ПАО) г.&nbsp;Москва</td></tr>
+          <tr><td>к/с:</td><td>30101810145250000411, БИК 044525411</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <div class="doc-title">Коммерческое предложение</div>
+
+  <!-- Блок "Предложение для / Номер предложения / Получатель / Дата / e-mail" -->
+  <table class="meta-table">
+    <tr>
+      <td class="meta-label">Предложение для:</td>
+      <td class="meta-value">{{ client_name|default('Контрагент') }}</td>
+      <td class="meta-label">Номер предложения:</td>
+      <td class="meta-value">{{ doc_number|default('—') }}</td>
+    </tr>
+    <tr>
+      <td class="meta-label">Получатель:</td>
+      <td class="meta-value">{{ contact_name|default('ФИО контакта') }}</td>
+      <td class="meta-label">Дата составления КП:</td>
+      <td class="meta-value">{{ doc_date|default(today_str|default('')) }}</td>
+    </tr>
+    <tr>
+      <td class="meta-label">e-mail:</td>
+      <td class="meta-value">{{ contact_email|default('email контакта') }}</td>
+      <td class="meta-label">Срок действия КП:</td>
+      <td class="meta-value">{{ valid_until|default('3 месяца с текущей даты') }}</td>
+    </tr>
+  </table>
+
+  <p class="section-title">Бюджет проекта</p>
+  <p class="section-subtitle">
+    Состав по обновлению и сопровождению ПО PrimeGeo («ПРАЙМ»)
+  </p>
+
+  <!-- Основная таблица КП с учётом скидки и НДС -->
+  <table class="kp-table">
+    <thead>
+      <tr>
+        <th class="col-num">№</th>
+        <th class="col-name">Программное обеспечение PrimeGeo</th>
+        <th class="col-qty">Кол-во, ед.</th>
+        <th class="col-price">Цена, руб.</th>
+        <th class="col-sum">Стоимость, руб.</th>
+        <th class="col-sum-disc">Стоимость со скидкой, руб.</th>
+        <th class="col-vat">Сумма НДС, руб.</th>
+        <th class="col-sum-vat">Стоимость с НДС, руб.</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set ns = namespace(sum_base=0, sum_discount=0, sum_vat=0, sum_total=0) %}
+
+      {% for line in lines %}
+        {% set name = line.name|default(line.productName)|default('Товар ' ~ loop.index) %}
+        {% set qty = (line.qty|default(line.quantity)|default(0))|float %}
+        {% set price = (line.price|default(0))|float %}
+        {% set base = qty * price %}
+        {% set discount_percent = (line.discountPercent|default(0))|float %}
+        {% set discount_amount = base * discount_percent / 100 %}
+        {% set base_after_discount = base - discount_amount %}
+        {% set vat_percent = (line.vatPercent|default(0))|float %}
+        {% set vat_amount = base_after_discount * vat_percent / 100 %}
+        {% set total = base_after_discount + vat_amount %}
+
+        {% set ns.sum_base = ns.sum_base + base %}
+        {% set ns.sum_discount = ns.sum_discount + discount_amount %}
+        {% set ns.sum_vat = ns.sum_vat + vat_amount %}
+        {% set ns.sum_total = ns.sum_total + total %}
+
+        {% set qty_display    = line.qty_str|default(line.quantity_str)|default('%.0f'|format(qty)) %}
+        {% set price_display  = line.price_fmt|default(line.price_str)|default('%.2f'|format(price)) %}
+        {% set base_display   = line.base_fmt|default('%.2f'|format(base)) %}
+        {% set disc_display   = line.discount_fmt|default('%.2f'|format(discount_amount)) %}
+        {% set vat_display    = line.vat_fmt|default('%.2f'|format(vat_amount)) %}
+        {% set total_display  = line.total_fmt|default('%.2f'|format(total)) %}
+
+        <tr>
+          <td class="text-center">{{ loop.index }}</td>
+          <td>{{ name }}</td>
+          <td class="text-center">{{ qty_display }}</td>
+          <td class="text-right">{{ price_display }}</td>
+          <td class="text-right">{{ base_display }}</td>
+          <td class="text-right">{{ disc_display }}</td>
+          <td class="text-right">{{ vat_display }}</td>
+          <td class="text-right">{{ total_display }}</td>
+        </tr>
+      {% endfor %}
+
+      <tr class="total-row">
+        <td colspan="4" class="text-right">Итого:</td>
+        <td class="text-right">{{ '%.2f'|format(ns.sum_base) }}</td>
+        <td class="text-right">{{ '%.2f'|format(ns.sum_discount) }}</td>
+        <td class="text-right">{{ '%.2f'|format(ns.sum_vat) }}</td>
+        <td class="text-right">{{ '%.2f'|format(ns.sum_total) }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="footer-note">
+    По любым вопросам и разъяснениям просим обращаться по указанным ниже контактам.
+  </p>
+
+  <div class="prepared-by">
+    <div>Подготовил: {{ prepared_by|default('Ответственный за сделку') }}</div>
+    <div>Контакты: {{ prepared_by_contacts|default('') }}</div>
+    <div>E-mail: {{ prepared_by_email|default('') }}</div>
+    <div>Тел.: {{ prepared_by_phone|default('') }}</div>
+    <div>Web: http://www.primegeo.ru</div>
+  </div>
+
+</body>
+</html>

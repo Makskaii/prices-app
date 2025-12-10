@@ -1,0 +1,53 @@
+<!-- app/templates/docs/kp_tp_discount.html -->
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Коммерческое предложение № {{ offer_number }}</title>
+  <style>
+    body { font-family: DejaVu Sans, sans-serif; font-size: 12px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #000; padding: 4px; }
+    th { background: #f2f2f2; }
+  </style>
+</head>
+<body>
+  <h2>Коммерческое предложение № {{ offer_number }} от {{ offer_date }}</h2>
+
+  <p>Клиент: {{ client_name }}</p>
+  <p>Город: {{ client_city }}</p>
+  <p>Телефон: {{ client_phone }}</p>
+
+  <h3>Перечень оборудования</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>№</th>
+        <th>Наименование</th>
+        <th>Кол-во</th>
+        <th>Цена</th>
+        <th>Скидка, %</th>
+        <th>Сумма</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ item.name }}</td>
+        <td>{{ item.quantity }}</td>
+        <td>{{ item.price_formatted }}</td>
+        <td>{{ item.discount_percent }}</td>
+        <td>{{ item.total_formatted }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p><b>Итого без НДС:</b> {{ total_no_vat_formatted }}</p>
+  <p><b>НДС:</b> {{ total_vat_formatted }}</p>
+  <p><b>Итого к оплате:</b> {{ total_formatted }}</p>
+
+  <p>Менеджер: {{ manager_name }}</p>
+</body>
+</html>

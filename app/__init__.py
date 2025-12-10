@@ -12,9 +12,11 @@ def create_app():
 
     from app.api.prices import prices_bp
     from app.api.products import products_bp
+    from app.api.docs import bp as docs_bp
 
     app.register_blueprint(prices_bp, url_prefix="/api/prices")
     app.register_blueprint(products_bp, url_prefix="/api/products")
+    app.register_blueprint(docs_bp)
 
     @app.route("/", methods=["GET", "POST"])
     def index():

@@ -679,6 +679,55 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+
+    .docs-panel {
+      margin-top: 12px;
+      border: 1px solid var(--bx-border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      background: #fafbfc;
+      font-size: 13px;
+    }
+
+    .docs-panel-title {
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .docs-variants {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .docs-variant {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .docs-variant:hover {
+      background: #f0f4ff;
+    }
+
+    .docs-variant input[type="radio"] {
+      margin: 0;
+    }
+
+    .docs-variant-label-main {
+      font-weight: 500;
+    }
+
+    .docs-variant-label-sub {
+      font-size: 11px;
+      color: var(--bx-muted);
+    }
+
+
   </style>
 </head>
 <body>
@@ -756,6 +805,52 @@
       </div>
     </div>
   </div>
+
+<div class="docs-panel">
+  <div class="docs-panel-title">Генерация документов</div>
+  <div class="docs-variants">
+    <label class="docs-variant">
+      <input type="radio" name="doc-variant" value="kp_tp_discount" checked>
+      <div>
+        <div class="docs-variant-label-main">
+          КП PrimeGeo (ТП, со скидкой)
+        </div>
+        <div class="docs-variant-label-sub">
+          Коммерческое предложение по сопровождению и обновлению, с колонкой «Стоимость со скидкой»
+        </div>
+      </div>
+    </label>
+
+    <label class="docs-variant">
+      <input type="radio" name="doc-variant" value="kp_tp_basic">
+      <div>
+        <div class="docs-variant-label-main">
+          КП PrimeGeo (ТП, без скидки)
+        </div>
+        <div class="docs-variant-label-sub">
+          Аналогичный шаблон, но без отдельной колонки «Со скидкой»
+        </div>
+      </div>
+    </label>
+
+    <label class="docs-variant">
+      <input type="radio" name="doc-variant" value="kp_delivery">
+      <div>
+        <div class="docs-variant-label-main">
+          КП PrimeGeo (Поставка)
+        </div>
+        <div class="docs-variant-label-sub">
+          Вариант документа «Поставка», без блока сопровождения
+        </div>
+      </div>
+    </label>
+  </div>
+
+  <button class="btn btn-primary" id="btn-generate-doc">
+    Скачать выбранный PDF
+  </button>
+</div>
+
 
   <div id="product-dropdown" class="product-dropdown">
     <div class="product-dropdown-search">
@@ -2338,8 +2433,85 @@
         showToast(e.message || "Ошибка удаления прайс-листа", "error");
       }
     }
-    
-    
+
+    // ================== Генерация документов (PDF) ==================
+    function collectTotalsForDocs() {
+      let base = 0;
+      let discount = 0;
+      let noVat = 0;
+      let vat = 0;
+      let total = 0;
+
+      lines.forEach(l => {
+        const price = Number(l.price) || 0;
+        const qty = Number(l.quantity) || 0;
+        const discountPercent = Number(l.discountPercent) || 0;
+        const vatPercent = Number(l.vatPercent) || 0;
+
+        const lineBase = price * qty;
+        const lineDiscount = lineBase * (discountPercent / 100);
+        const baseAfterDiscount = lineBase - lineDiscount;
+        const lineVat = baseAfterDiscount * (vatPercent / 100);
+        const lineTotal = baseAfterDiscount + lineVat;
+
+        base += lineBase;
+        discount += lineDiscount;
+        noVat += baseAfterDiscount;
+        vat += lineVat;
+        total += lineTotal;
+      });
+
+      return { base, discount, no_vat: noVat, vat, total };
+    }
+
+    async function generateDocument() {
+      // На всякий случай пересчитаем строки
+      recalcAll();
+
+      const variantInput = document.querySelector('input[name="doc-variant"]:checked');
+      if (!variantInput) {
+        showToast("Выберите вариант документа", "error");
+        return;
+      }
+
+      const variant = variantInput.value;
+      const state = getAppStateForSave();
+      const totals = collectTotalsForDocs();
+
+      try {
+        const res = await fetch(apiBase + "/api/docs/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            variant,
+            deal_id: CURRENT_DEAL_ID,
+            lines: state.lines,
+            totals
+          })
+        });
+
+        if (!res.ok) {
+          showToast("Ошибка генерации документа", "error");
+          return;
+        }
+
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "komercheskoe_predlozhenie.pdf";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+
+        showToast("Документ сформирован", "success");
+      } catch (e) {
+        console.error(e);
+        showToast("Ошибка сети при генерации документа", "error");
+      }
+    }
+
     document.addEventListener("DOMContentLoaded", () => {
       productDropdownEl = document.getElementById("product-dropdown");
       productDropdownListEl = document.getElementById("product-dropdown-list");
@@ -2395,6 +2567,11 @@
         updateSummary();
         renderLines();
       });
+
+      const btnGenerateDoc = document.getElementById("btn-generate-doc");
+        if (btnGenerateDoc) {
+          btnGenerateDoc.addEventListener("click", generateDocument);
+        }
 
       // кнопка "Управление прайсами"
       document.getElementById("btn-manage-prices").addEventListener("click", () => {
@@ -2519,6 +2696,8 @@
           }
         );
       });
+
+
 
       const cbSelectAll = document.getElementById("cb-select-all");
       if (cbSelectAll) {
