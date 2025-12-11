@@ -1,6 +1,12 @@
+import os
 from flask import Blueprint, request, jsonify, send_file, current_app
 from io import BytesIO
-from ..docgen import build_pdf_from_template
+from datetime import datetime, date, timedelta
+from app.services.bitrix_api import fetch_deal_with_extras
+from app.docgen import build_pdf_from_template, format_money
+from app.database import db
+from app.models.proposal_counter import ProposalCounter
+
 
 bp = Blueprint("docs", __name__, url_prefix="/api/docs")
 
@@ -62,51 +68,138 @@ def _calc_totals(lines, totals_from_client=None):
         "total_fmt": _format_money(total),
     }
 
+def add_months(d: date, months: int) -> date:
+    """
+    Аккуратно добавляем N месяцев к дате, чтобы не улететь за пределы месяца.
+    """
+    month = d.month - 1 + months
+    year = d.year + month // 12
+    month = month % 12 + 1
+
+    # количество дней в месяце
+    days_in_month = [31,
+                     29 if (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)) else 28,
+                     31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+    day = min(d.day, days_in_month)
+    return date(year, month, day)
+
+def get_next_offer_number_for_company(company_id: str | None) -> int | None:
+    """
+    Возвращает следующий номер предложения для данной компании.
+    company_id — это ID компании из Bitrix (строкой).
+    Если company_id нет, вернём None и дальше можно fallback-нуть к deal_id.
+    """
+    if not company_id:
+        return None
+
+    pc = ProposalCounter.query.filter_by(company_id=company_id).first()
+    if pc is None:
+        pc = ProposalCounter(company_id=company_id, counter=1)
+        db.session.add(pc)
+    else:
+        pc.counter += 1
+
+    db.session.commit()
+    return pc.counter
 
 @bp.post("/generate")
 def generate():
-    data = request.get_json(silent=True) or {}
-
-    doc_type = data.get("docType") or data.get("doc_type") or "kp_tp_discount"
+    data = request.get_json() or {}
+    variant = data.get("variant") or "kp_tp_discount"
+    deal_id = data.get("deal_id")
     lines = data.get("lines") or []
+    totals = data.get("totals") or {}
 
-    # инфа по клиенту / сделке – как ты уже отправляешь с фронта
-    client = data.get("client") or {}
-    deal = data.get("deal") or {}
-
-    # пробуем взять totals из фронта, если он их присылает
-    totals_raw = data.get("totals") or data.get("summary") or {}
-
-    totals = _calc_totals(lines, totals_raw)
-
-    context = {
+    context: dict = {
         "lines": lines,
-        "client": client,
-        "deal": deal,
         "totals": totals,
+        "format_money": format_money,
+
+        # дефолтные значения, если из Bitrix ничего не получим
+        "deal_company": None,
+        "offer_number": None,
+        "contact_name": None,
+        "contact_email": None,
+        "offer_date": None,
+        "valid_until": None,
+        "manager_name": None,
+        "manager_email": None,
+        "manager_phone": None,
     }
 
-    if doc_type == "kp_tp_discount":
-        template_name = "docs/kp_tp_discount.html"
-        filename = f"KP_TP_so_skidkoy_{deal.get('number') or deal.get('id') or 'document'}.pdf"
-    elif doc_type == "kp_tp":
-        template_name = "docs/kp_tp.html"
-        filename = f"KP_TP_{deal.get('number') or deal.get('id') or 'document'}.pdf"
-    elif doc_type == "kp_supply":
-        template_name = "docs/kp_supply.html"
-        filename = f"KP_postavka_{deal.get('number') or deal.get('id') or 'document'}.pdf"
-    else:
-        return jsonify({"error": "Unknown docType"}), 400
+    today = date.today()
 
-    try:
-        pdf_bytes = build_pdf_from_template(template_name, context)
-    except Exception as e:
-        current_app.logger.exception("Error while building PDF")
-        return jsonify({"error": "pdf_render_error", "details": str(e)}), 500
+    # --- подстановка данных из сделки ---
+    if deal_id:
+        try:
+            deal_id_int = int(deal_id)
+            extra = fetch_deal_with_extras(deal_id_int)
+
+            # то, что уже возвращает твой сервис
+            context["deal_company"] = extra.get("deal_company") or None
+            context["contact_name"] = extra.get("contact_name") or None
+            context["contact_email"] = extra.get("contact_email") or None
+            context["manager_name"] = extra.get("manager_name") or None
+            context["manager_email"] = extra.get("manager_email") or None
+            context["manager_phone"] = extra.get("manager_phone") or None
+
+            # дата составления КП — из сделки (если есть), иначе fallback ниже
+            offer_date_str = extra.get("offer_date")
+            if offer_date_str:
+                context["offer_date"] = offer_date_str
+
+            # ID компании из Bitrix — обязательно верни его из fetch_deal_with_extras
+            company_id = extra.get("company_id")
+
+            # порядковый номер предложения для компании
+            offer_seq = get_next_offer_number_for_company(company_id)
+            if offer_seq is not None:
+                context["offer_number"] = str(offer_seq)
+            else:
+                # если company_id нет — fallback на id сделки
+                context["offer_number"] = str(deal_id_int)
+
+        except Exception:
+            current_app.logger.exception("Bitrix error for deal %s", deal_id)
+
+    # ----- страхуем offer_date и valid_until даже без сделки -----
+
+    # offer_date: если из Bitrix не пришло — ставим сегодняшний день
+    if not context.get("offer_date"):
+        context["offer_date"] = today.strftime("%d.%m.%Y")
+
+    # valid_until: ВСЕГДА от даты генерации документа (today) + 3 календарных месяца
+    if not context.get("valid_until"):
+        context["valid_until"] = add_months(today, 3).strftime("%d.%m.%Y")
+
+    # дефолты для шаблона (чтобы сработали {{ ... or "..." }})
+    for key, default in [
+        ("deal_company", "Контрагент"),
+        ("offer_number", "—"),
+        ("contact_name", "ФИО контакта"),
+        ("contact_email", "email контакта"),
+        ("offer_date", "Дата составления КП"),
+        ("manager_name", "Ответственный за сделку"),
+        ("manager_email", "email ответственного за сделку"),
+        ("manager_phone", "телефон ответственного за сделку"),
+    ]:
+        context.setdefault(key, None)
+
+    # выбор шаблона
+    if variant == "kp_tp_discount":
+        template_name = "docs/kp_tp_discount.html"
+    elif variant == "kp_tp_basic":
+        template_name = "docs/kp_tp.html"
+    elif variant == "kp_delivery":
+        template_name = "docs/kp_supply.html"
+    else:
+        template_name = "docs/kp_tp_discount.html"
+
+    pdf_bytes = build_pdf_from_template(template_name, context)
 
     return send_file(
         BytesIO(pdf_bytes),
         mimetype="application/pdf",
         as_attachment=True,
-        download_name=filename,
+        download_name="komercheskoe_predlozhenie.pdf",
     )

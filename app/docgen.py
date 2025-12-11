@@ -1,32 +1,54 @@
 # app/docgen.py
 from io import BytesIO
-from datetime import datetime
+from datetime import date, datetime
 
-from flask import current_app, render_template
+from flask import current_app, render_template, url_for
 from weasyprint import HTML
+import os
 
-
-def format_money(value: float) -> str:
-    """Форматирование как в виджете: 12 345,67."""
+def format_money(value) -> str:
+    """
+    Форматирование как в виджете: 12 345,67.
+    Принимает любое числовое значение или строку.
+    """
     try:
         num = float(value)
     except (TypeError, ValueError):
         num = 0.0
+
     s = f"{num:.2f}"
     int_part, dec_part = s.split(".")
+
+    # убираем возможные пробелы/неразрывные
     int_part = int_part.replace("\xa0", "").replace(" ", "")
+
+    # разбиваем по 3 разряда с конца
     int_part = int_part[::-1]
-    groups = [int_part[i:i+3] for i in range(0, len(int_part), 3)]
+    groups = [int_part[i:i + 3] for i in range(0, len(int_part), 3)]
     int_part = " ".join(groups)[::-1]
+
     return f"{int_part},{dec_part}"
 
-
-def build_pdf_from_template(template_name: str, context: dict) -> bytes:
+def build_pdf_from_template(template_name: str, context: dict | None) -> bytes:
     """
     Рендерит HTML-шаблон и возвращает PDF как bytes.
+    В контекст добавляем вспомогательные функции и путь к логотипу.
     """
-    # base_url нужен, чтобы WeasyPrint находил css/картинки из /static
-    html = render_template(template_name, **context)
+    if context is None:
+        context = {}
+
+    ctx = dict(context)
+
+    # функция форматирования доступна в шаблоне как {{ format_money(...) }}
+    ctx.setdefault("format_money", format_money)
+
+    # путь к логотипу как file://... чтобы WeasyPrint его увидел
+    static_folder = current_app.static_folder or os.path.join(current_app.root_path, "static")
+    logo_path = os.path.join(static_folder, "geotek_logo.png")
+    if os.path.exists(logo_path):
+        ctx.setdefault("logo_url", "file://" + logo_path)
+
+    html = render_template(template_name, **ctx)
     pdf = HTML(string=html, base_url=current_app.root_path).write_pdf()
     return pdf
 

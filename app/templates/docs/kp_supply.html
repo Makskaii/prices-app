@@ -1,53 +1,324 @@
-<!-- app/templates/docs/kp_tp_discount.html -->
 <!doctype html>
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <title>Коммерческое предложение № {{ offer_number }}</title>
+  <title>Коммерческое предложение</title>
   <style>
-    body { font-family: DejaVu Sans, sans-serif; font-size: 12px; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #000; padding: 4px; }
-    th { background: #f2f2f2; }
+    @page {
+      size: A4;
+      margin: 20mm 15mm 20mm 20mm;
+    }
+
+    body {
+      font-family: DejaVu Sans, Arial, sans-serif;
+      font-size: 10pt;
+      color: #000;
+      line-height: 1.4;
+    }
+
+    .page {
+      width: 100%;
+    }
+
+    .header-row {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 4mm;
+    }
+
+    .header-row td {
+      padding: 0;
+      vertical-align: top;
+    }
+
+    .header-left-title {
+      font-weight: bold;
+      font-size: 14pt;       /* больше шрифт */
+      padding-bottom: 4mm;
+    }
+
+    .logo-cell {
+      text-align: right;
+      font-size: 10pt;
+    }
+
+    .logo-cell img {
+      height: 70px;
+      margin-top: -10mm;
+    }
+
+    .requisites-wrapper {
+      margin-top: 1mm;
+      margin-bottom: 6mm;
+      border-top: 1px solid #000;
+      border-bottom: 1px solid #000;
+      padding: 2mm 0;
+    }
+
+    .requisites-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8.5pt;
+      line-height: 1.35;
+    }
+
+    .requisites-table td {
+      vertical-align: top;
+      padding: 0 8mm 0 0;
+    }
+
+    .section-title {
+      font-weight: bold;
+      font-size: 10pt;
+      text-align: center;
+      margin: 2mm 0;
+    }
+
+    .info-block {
+      margin-top: 10pt;
+      margin-bottom: 6pt;
+      font-size: 10pt;
+    }
+
+    .info-block td {
+      padding: 0.5mm 2mm 0.5mm 0;
+      vertical-align: top;
+    }
+
+    .info-cell-left {
+      width: 50%;
+      padding-right: 35mm;
+    }
+
+    .info-cell-right {
+      width: 50%;
+    }
+
+    .info-label {
+      font-weight: bold;
+      white-space: nowrap;
+    }
+
+    .valid-until {
+      margin-top: 6pt;
+      margin-bottom: 14pt;   /* больше отступ вниз */
+      text-align: right;
+      font-size: 10pt;
+      font-weight: bold;
+    }
+
+    .budget-title {
+      font-weight: bold;
+      text-align: center;
+      margin-top: 10pt;
+      margin-bottom: 14pt;
+    }
+
+    .composition-title {
+      font-weight: bold;
+      text-align: center;
+      margin: 0 0 2mm;
+    }
+
+    .products-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 7pt;
+      margin-top: 2mm;
+      margin-bottom: 6mm;
+    }
+
+    .products-table th,
+    .products-table td {
+      border: 1px solid #000;
+      padding: 2.5mm 1.5mm;
+      vertical-align: top;
+    }
+
+    .products-table th {
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .cell-center { text-align: center; }
+    .cell-right  { text-align: right; }
+    .cell-bold   { font-weight: bold; }
+
+    .footer-text {
+      font-size: 9pt;
+      margin-top: 4mm;
+    }
+
+    .footer-text p {
+      margin: 0 0 2mm;
+    }
+
+    .footer-contacts-title {
+      font-weight: bold;
+    }
+
+    .mt-4 { margin-top: 4mm; }
   </style>
 </head>
 <body>
-  <h2>Коммерческое предложение № {{ offer_number }} от {{ offer_date }}</h2>
+<div class="page">
 
-  <p>Клиент: {{ client_name }}</p>
-  <p>Город: {{ client_city }}</p>
-  <p>Телефон: {{ client_phone }}</p>
+  <!-- Верхняя строка: слева название, справа логотип -->
+  <table class="header-row">
+    <tr>
+      <td style="width: 60%;">
+        <div class="header-left-title">Коммерческое предложение</div>
+      </td>
+      <td class="logo-cell" style="width: 40%;">
+        <img src="{{ logo_url or url_for('static', filename='geotek_logo.png') }}" alt="Логотип">
+      </td>
+    </tr>
+  </table>
 
-  <h3>Перечень оборудования</h3>
-  <table>
-    <thead>
+  <!-- Реквизиты в блоке с линиями сверху и снизу -->
+  <div class="requisites-wrapper">
+    <table class="requisites-table">
       <tr>
-        <th>№</th>
-        <th>Наименование</th>
-        <th>Кол-во</th>
-        <th>Цена</th>
-        <th>Скидка, %</th>
-        <th>Сумма</th>
+        <td>
+          450015, Республика Башкортостан, г.&nbsp;Уфа, ул.&nbsp;К.&nbsp;Маркса, 37, корп.&nbsp;4, к.&nbsp;514<br>
+          Тел./факс (347)&nbsp;291-12-06, 291-12-07<br>
+          E-mail: prime@geotec.ru<br>
+          Web: http://www.primegeo.ru
+        </td>
+        <td>
+          Регистрирующий орган: ИФНС России по Ленинскому району г.&nbsp;Уфы<br>
+          ОГРН: 1080275002389, дата регистрации: 23 июля 2008&nbsp;г.<br>
+          ИНН: 0275065098 / КПП 027501001<br>
+          р/с 40702810530620006390<br>
+          в филиале «Центральный» Банка ВТБ (ПАО) в г.&nbsp;Москве<br>
+          кор.&nbsp;счёт: 30101810145250000411, БИК 044525411
+        </td>
       </tr>
+    </table>
+  </div>
+
+  <!-- Блок "Предложение для / Номер предложения / ..." -->
+  <table class="info-block">
+    <tr>
+      <td class="info-cell-left">
+        <span class="info-label">Предложение для:</span>
+        <span> {{ deal_company or "Контрагент" }}</span>
+      </td>
+      <td class="info-cell-right">
+        <span class="info-label">Номер предложения:</span>
+        <span> {{ offer_number or "—" }}</span>
+      </td>
+    </tr>
+    <tr>
+      <td class="info-cell-left">
+        <span class="info-label">Получатель:</span>
+        <span> {{ contact_name or "ФИО контакта" }}</span>
+      </td>
+      <td class="info-cell-right">
+        <span class="info-label">Дата составления КП:</span>
+        <span> {{ offer_date or "Дата составления КП" }}</span>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <span class="info-label">e-mail:</span>
+        <span> {{ contact_email or "email контакта" }}</span>
+      </td>
+    </tr>
+  </table>
+
+  <!-- Строка "Настоящее предложение действует до ..." справа -->
+  <div class="valid-until">
+    Настоящее предложение действует до {{ valid_until }}
+  </div>
+
+  <div class="budget-title">Бюджет проекта</div>
+
+  <div class="composition-title">
+    Состав по обновлению и сопровождению ПО PrimeGeo («ПРАЙМ»)
+  </div>
+
+  <!-- Таблица по товарам -->
+  <table class="products-table">
+    <thead>
+    <tr>
+      <th style="width: 4%;">№</th>
+      <th style="width: 40%;">Программное обеспечение PrimeGeo</th>
+      <th style="width: 6%;">Кол-во, ед.</th>
+      <th style="width: 11%;">Цена, руб.</th>
+      <th style="width: 11%;">Стоимость, руб.</th>
+      <th style="width: 11%;">Стоимость со скидкой, руб.</th>
+      <th style="width: 11%;">Сумма НДС, руб.</th>
+      <th style="width: 11%;">Стоимость с НДС, руб.</th>
+    </tr>
     </thead>
     <tbody>
-      {% for item in items %}
+    {% set idx = 1 %}
+    {% for line in lines %}
+      {% set price = (line.price or 0) | float %}
+      {% set qty = (line.quantity or 0) | float %}
+      {% set discount_p = (line.discountPercent or 0) | float %}
+      {% set vat_p = (line.vatPercent or 0) | float %}
+
+      {% set base = price * qty %}
+      {% set discount_val = base * (discount_p / 100) %}
+      {% set base_after_discount = base - discount_val %}
+      {% set vat_val = base_after_discount * (vat_p / 100) %}
+      {% set total_val = base_after_discount + vat_val %}
+
       <tr>
-        <td>{{ loop.index }}</td>
-        <td>{{ item.name }}</td>
-        <td>{{ item.quantity }}</td>
-        <td>{{ item.price_formatted }}</td>
-        <td>{{ item.discount_percent }}</td>
-        <td>{{ item.total_formatted }}</td>
+        <td class="cell-center">{{ loop.index }}</td>
+        <td>{{ line.productName or "" }}</td>
+        <td class="cell-center">{{ qty|int }}</td>
+        <td class="cell-right">{{ format_money(price) }}</td>
+        <td class="cell-right">{{ format_money(base) }}</td>
+        <td class="cell-right">{{ format_money(base_after_discount) }}</td>
+        <td class="cell-right">{{ format_money(vat_val) }}</td>
+        <td class="cell-right">{{ format_money(total_val) }}</td>
       </tr>
-      {% endfor %}
+      {% set idx = idx + 1 %}
+    {% endfor %}
+
+    <!-- Строка ИТОГО -->
+    <tr>
+      <td></td>
+      <td class="cell-bold" style="text-align: right;">Итого:</td>
+      <td></td>
+      <td></td>
+      <td class="cell-right cell-bold">
+        {{ format_money(totals.base or 0) }}
+      </td>
+      <td class="cell-right cell-bold">
+        {{ format_money((totals.base or 0) - (totals.discount or 0)) }}
+      </td>
+      <td class="cell-right cell-bold">
+        {{ format_money(totals.vat or 0) }}
+      </td>
+      <td class="cell-right cell-bold">
+        {{ format_money(totals.total or 0) }}
+      </td>
+    </tr>
     </tbody>
   </table>
 
-  <p><b>Итого без НДС:</b> {{ total_no_vat_formatted }}</p>
-  <p><b>НДС:</b> {{ total_vat_formatted }}</p>
-  <p><b>Итого к оплате:</b> {{ total_formatted }}</p>
+  <div class="footer-text">
+  <p>
+    По любым вопросам и разъяснениям просим обращаться по указанным ниже контактам.
+  </p>
 
-  <p>Менеджер: {{ manager_name }}</p>
+  <div class="mt-4">
+    <span class="footer-contacts-title">Подготовил:</span>
+    {{ manager_name or "Ответственный за сделку" }}
+  </div>
+
+  <div>
+    <span class="footer-contacts-title">Контакты:</span><br>
+    E-mail: {{ manager_email or "email ответственного за сделку" }}<br>
+    Тел.: {{ manager_phone or "телефон ответственного за сделку" }}<br>
+    Web: http://www.primegeo.ru
+  </div>
+</div>
+
+</div>
 </body>
 </html>
