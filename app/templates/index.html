@@ -807,43 +807,61 @@
   </div>
 
 <div class="docs-panel">
-  <div class="docs-panel-title">Генерация документов</div>
-  <div class="docs-variants">
+  <div class="docs-panel-title">Сформировать документ</div>
+    <div class="docs-variants">
+    <!-- 1. ТП: со скидкой + НДС (текущий шаблон) -->
     <label class="docs-variant">
       <input type="radio" name="doc-variant" value="kp_tp_discount" checked>
       <div>
         <div class="docs-variant-label-main">
-          КП PrimeGeo (ТП, со скидкой)
+          КП PrimeGeo (ТП, со скидкой, с НДС)
         </div>
         <div class="docs-variant-label-sub">
-          Коммерческое предложение по сопровождению и обновлению, с колонкой «Стоимость со скидкой»
+          Таблица со скидкой и НДС.
         </div>
       </div>
     </label>
 
+    <!-- 2. ТП: без скидки, с НДС -->
     <label class="docs-variant">
       <input type="radio" name="doc-variant" value="kp_tp_basic">
       <div>
         <div class="docs-variant-label-main">
-          КП PrimeGeo (ТП, без скидки)
+          КП PrimeGeo (ТП, без скидки, с НДС)
         </div>
         <div class="docs-variant-label-sub">
-          Аналогичный шаблон, но без отдельной колонки «Со скидкой»
+          Таблица без скидки.
         </div>
       </div>
     </label>
 
+    <!-- 3. ТП: со скидкой, без НДС (+ текст после таблицы) -->
     <label class="docs-variant">
-      <input type="radio" name="doc-variant" value="kp_delivery">
+      <input type="radio" name="doc-variant" value="kp_tp_no_vat">
       <div>
         <div class="docs-variant-label-main">
-          КП PrimeGeo (Поставка)
+          КП PrimeGeo (ТП, со скидкой, без НДС)
         </div>
         <div class="docs-variant-label-sub">
-          Вариант документа «Поставка», без блока сопровождения
+          Таблица без НДС.
         </div>
       </div>
     </label>
+
+    <!-- 4. ТП: без скидки, без НДС -->
+    <label class="docs-variant">
+      <input type="radio" name="doc-variant" value="kp_tp_no_vat_nodiscount">
+      <div>
+        <div class="docs-variant-label-main">
+          КП PrimeGeo (ТП, без скидки, без НДС)
+        </div>
+        <div class="docs-variant-label-sub">
+          Таблица без скидки и НДС.
+        </div>
+      </div>
+    </label>
+  </div>
+
   </div>
 
   <button class="btn btn-primary" id="btn-generate-doc">

@@ -238,18 +238,17 @@
     Состав по обновлению и сопровождению ПО PrimeGeo («ПРАЙМ»)
   </div>
 
-  <!-- Таблица по товарам -->
+    <!-- Таблица по товарам: без колонки «Стоимость со скидкой», с НДС -->
   <table class="products-table">
     <thead>
     <tr>
       <th style="width: 4%;">№</th>
-      <th style="width: 40%;">Программное обеспечение PrimeGeo</th>
-      <th style="width: 6%;">Кол-во, ед.</th>
+      <th style="width: 36%;">Программное обеспечение PrimeGeo</th>
+      <th style="width: 8%;">Кол-во, ед.</th>
       <th style="width: 11%;">Цена, руб.</th>
       <th style="width: 11%;">Стоимость, руб.</th>
-      <th style="width: 11%;">Стоимость со скидкой, руб.</th>
-      <th style="width: 11%;">Сумма НДС, руб.</th>
-      <th style="width: 11%;">Стоимость с НДС, руб.</th>
+      <th style="width: 15%;">Сумма НДС, руб.</th>
+      <th style="width: 15%;">Стоимость с НДС, руб.</th>
     </tr>
     </thead>
     <tbody>
@@ -267,12 +266,11 @@
       {% set total_val = base_after_discount + vat_val %}
 
       <tr>
-        <td class="cell-center">{{ loop.index }}</td>
+        <td class="cell-center">{{ idx }}</td>
         <td>{{ line.productName or "" }}</td>
         <td class="cell-center">{{ qty|int }}</td>
         <td class="cell-right">{{ format_money(price) }}</td>
         <td class="cell-right">{{ format_money(base) }}</td>
-        <td class="cell-right">{{ format_money(base_after_discount) }}</td>
         <td class="cell-right">{{ format_money(vat_val) }}</td>
         <td class="cell-right">{{ format_money(total_val) }}</td>
       </tr>
@@ -289,9 +287,6 @@
         {{ format_money(totals.base or 0) }}
       </td>
       <td class="cell-right cell-bold">
-        {{ format_money((totals.base or 0) - (totals.discount or 0)) }}
-      </td>
-      <td class="cell-right cell-bold">
         {{ format_money(totals.vat or 0) }}
       </td>
       <td class="cell-right cell-bold">
@@ -300,6 +295,7 @@
     </tr>
     </tbody>
   </table>
+
 
   <div class="footer-text">
   <p>

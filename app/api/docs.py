@@ -187,10 +187,19 @@ def generate():
 
     # выбор шаблона
     if variant == "kp_tp_discount":
+        # 1. ТП: со скидкой + НДС (у тебя уже есть)
         template_name = "docs/kp_tp_discount.html"
     elif variant == "kp_tp_basic":
-        template_name = "docs/kp_tp.html"
+        # 2. ТП: без колонки «Стоимость со скидкой», но с НДС
+        template_name = "docs/kp_tp_basic.html"
+    elif variant == "kp_tp_no_vat":
+        # 3. ТП: со скидкой, без НДС
+        template_name = "docs/kp_tp_no_vat.html"
+    elif variant == "kp_tp_no_vat_nodiscount":
+        # 4. ТП: без скидки, без НДС
+        template_name = "docs/kp_tp_no_vat_nodiscount.html"
     elif variant == "kp_delivery":
+        # если когда-нибудь понадобится «Поставка» — оставим старый шаблон
         template_name = "docs/kp_supply.html"
     else:
         template_name = "docs/kp_tp_discount.html"
