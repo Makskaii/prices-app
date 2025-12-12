@@ -263,7 +263,7 @@
       {% set base_after_discount = base - discount_val %}
 
       <tr>
-        <td class="cell-center">{{ idx }}</td>
+        <td class="cell-center">{{ loop.index }}</td>
         <td>{{ line.productName or "" }}</td>
         <td class="cell-center">{{ qty|int }}</td>
         <td class="cell-right">{{ format_money(price) }}</td>

@@ -6,6 +6,7 @@ from app.services.bitrix_api import fetch_deal_with_extras
 from app.docgen import build_pdf_from_template, format_money
 from app.database import db
 from app.models.proposal_counter import ProposalCounter
+from app.docgen_docx import build_docx_for_variant
 
 
 bp = Blueprint("docs", __name__, url_prefix="/api/docs")
@@ -106,16 +107,18 @@ def get_next_offer_number_for_company(company_id: str | None) -> int | None:
 def generate():
     data = request.get_json() or {}
     variant = data.get("variant") or "kp_tp_discount"
+    out_format = (data.get("format") or "pdf").lower()
     deal_id = data.get("deal_id")
     lines = data.get("lines") or []
-    totals = data.get("totals") or {}
+
+    totals_from_client = data.get("totals")
+    totals = _calc_totals(lines, totals_from_client)
 
     context: dict = {
         "lines": lines,
         "totals": totals,
         "format_money": format_money,
 
-        # дефолтные значения, если из Bitrix ничего не получим
         "deal_company": None,
         "offer_number": None,
         "contact_name": None,
@@ -129,13 +132,11 @@ def generate():
 
     today = date.today()
 
-    # --- подстановка данных из сделки ---
     if deal_id:
         try:
             deal_id_int = int(deal_id)
             extra = fetch_deal_with_extras(deal_id_int)
 
-            # то, что уже возвращает твой сервис
             context["deal_company"] = extra.get("deal_company") or None
             context["contact_name"] = extra.get("contact_name") or None
             context["contact_email"] = extra.get("contact_email") or None
@@ -143,36 +144,27 @@ def generate():
             context["manager_email"] = extra.get("manager_email") or None
             context["manager_phone"] = extra.get("manager_phone") or None
 
-            # дата составления КП — из сделки (если есть), иначе fallback ниже
-            offer_date_str = extra.get("offer_date")
-            if offer_date_str:
-                context["offer_date"] = offer_date_str
+            # Дата КП = дата формирования документа
+            context["offer_date"] = today.strftime("%d.%m.%Y")
 
-            # ID компании из Bitrix — обязательно верни его из fetch_deal_with_extras
+            # Номер предложения = счётчик по company_id
             company_id = extra.get("company_id")
-
-            # порядковый номер предложения для компании
             offer_seq = get_next_offer_number_for_company(company_id)
             if offer_seq is not None:
                 context["offer_number"] = str(offer_seq)
             else:
-                # если company_id нет — fallback на id сделки
                 context["offer_number"] = str(deal_id_int)
 
         except Exception:
             current_app.logger.exception("Bitrix error for deal %s", deal_id)
 
-    # ----- страхуем offer_date и valid_until даже без сделки -----
-
-    # offer_date: если из Bitrix не пришло — ставим сегодняшний день
+    # страховки
     if not context.get("offer_date"):
         context["offer_date"] = today.strftime("%d.%m.%Y")
 
-    # valid_until: ВСЕГДА от даты генерации документа (today) + 3 календарных месяца
     if not context.get("valid_until"):
         context["valid_until"] = add_months(today, 3).strftime("%d.%m.%Y")
 
-    # дефолты для шаблона (чтобы сработали {{ ... or "..." }})
     for key, default in [
         ("deal_company", "Контрагент"),
         ("offer_number", "—"),
@@ -187,22 +179,28 @@ def generate():
 
     # выбор шаблона
     if variant == "kp_tp_discount":
-        # 1. ТП: со скидкой + НДС (у тебя уже есть)
         template_name = "docs/kp_tp_discount.html"
     elif variant == "kp_tp_basic":
-        # 2. ТП: без колонки «Стоимость со скидкой», но с НДС
         template_name = "docs/kp_tp_basic.html"
     elif variant == "kp_tp_no_vat":
-        # 3. ТП: со скидкой, без НДС
         template_name = "docs/kp_tp_no_vat.html"
     elif variant == "kp_tp_no_vat_nodiscount":
-        # 4. ТП: без скидки, без НДС
         template_name = "docs/kp_tp_no_vat_nodiscount.html"
     elif variant == "kp_delivery":
-        # если когда-нибудь понадобится «Поставка» — оставим старый шаблон
         template_name = "docs/kp_supply.html"
     else:
         template_name = "docs/kp_tp_discount.html"
+
+    if out_format == "docx":
+        docx_bytes = build_docx_for_variant(variant, context)
+
+        return send_file(
+            BytesIO(docx_bytes),
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            as_attachment=True,
+            download_name="komercheskoe_predlozhenie.docx",
+        )
+
 
     pdf_bytes = build_pdf_from_template(template_name, context)
 

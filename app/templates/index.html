@@ -46,7 +46,7 @@
 
     .modal-dialog {
       background: #fff;
-      border-radius: 8px;
+      border-radius: 6px;
       box-shadow: 0 8px 24px rgba(0,0,0,0.25);
       min-width: 600px;
       min-height: 150px; 
@@ -55,6 +55,11 @@
       border: 1px solid var(--bx-border);
 
       position: absolute; 
+
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - 40px);
+
     }
 
     .modal-header {
@@ -85,12 +90,29 @@
       color: #555;
     }
 
+    .modal-action-btn {
+      border: none;
+      background: transparent;
+      font-size: 14px;
+      cursor: pointer;
+      line-height: 1;
+      padding: 2px 4px;
+      color: #999;
+    }
+
+    .modal-action-btn:hover {
+      color: #333;
+    }
+
+
     .modal-body {
       padding: 12px 14px;
       display: grid;
       grid-template-columns: 280px minmax(0, 1fr);
       gap: 12px;
       overflow: hidden;
+      flex: 1 1 auto;
+      min-height: 0;
     }
 
     .modal-footer {
@@ -99,6 +121,9 @@
       display: flex;
       justify-content: flex-end;
       gap: 8px;
+      flex: 0 0 auto;
+      background: #fff;
+      z-index: 2;
     }
 
     .modal-resize-handle {
@@ -304,7 +329,9 @@
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      max-height: 260px;
+      
+      flex: 1 1 auto;
+      min-height: 0;
     }
 
     .price-items-header {
@@ -317,6 +344,10 @@
 
     .price-items-table-container {
       overflow: auto;
+      padding-bottom: 16px;
+
+      flex: 1 1 auto;
+      min-height: 0;
     }
 
     .price-items-table {
@@ -727,6 +758,38 @@
       color: var(--bx-muted);
     }
 
+    .price-list-sidebar,
+    .price-list-form {
+      min-height: 0;
+      height: 100%;
+    }
+
+    /* Форма справа — колонка, а блок товаров должен занять остаток */
+    .price-list-form {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ВАЖНО: блок товаров в прайсе занимает оставшееся место и прокручивается внутри */
+    .price-items-wrapper {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Вот где будет реальный скролл */
+    .price-items-table-container {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+
+      /* чтобы последние строки не прятались за футером/тенями */
+      padding-bottom: 16px;
+    }
+
 
   </style>
 </head>
@@ -814,7 +877,7 @@
       <input type="radio" name="doc-variant" value="kp_tp_discount" checked>
       <div>
         <div class="docs-variant-label-main">
-          КП PrimeGeo (ТП, со скидкой, с НДС)
+          Техническая поддержка со скидкой и НДС
         </div>
         <div class="docs-variant-label-sub">
           Таблица со скидкой и НДС.
@@ -827,7 +890,7 @@
       <input type="radio" name="doc-variant" value="kp_tp_basic">
       <div>
         <div class="docs-variant-label-main">
-          КП PrimeGeo (ТП, без скидки, с НДС)
+          Техническая поддержка
         </div>
         <div class="docs-variant-label-sub">
           Таблица без скидки.
@@ -840,7 +903,7 @@
       <input type="radio" name="doc-variant" value="kp_tp_no_vat">
       <div>
         <div class="docs-variant-label-main">
-          КП PrimeGeo (ТП, со скидкой, без НДС)
+          Поставка ПО со скидкой
         </div>
         <div class="docs-variant-label-sub">
           Таблица без НДС.
@@ -853,20 +916,28 @@
       <input type="radio" name="doc-variant" value="kp_tp_no_vat_nodiscount">
       <div>
         <div class="docs-variant-label-main">
-          КП PrimeGeo (ТП, без скидки, без НДС)
+          Поставка ПО
         </div>
         <div class="docs-variant-label-sub">
-          Таблица без скидки и НДС.
+          Таблица без скидки и без НДС.
         </div>
       </div>
     </label>
-  </div>
+    
+    <div style="display:flex; gap:12px; align-items:center; margin-top:8px;">
+    <label style="display:flex; gap:6px; align-items:center;">
+      <input type="radio" name="doc-format" value="pdf" checked>
+      PDF
+    </label>
 
-  </div>
+    <label style="display:flex; gap:6px; align-items:center;">
+      <input type="radio" name="doc-format" value="docx">
+      DOCX
+    </label>
 
-  <button class="btn btn-primary" id="btn-generate-doc">
-    Скачать выбранный PDF
-  </button>
+    <button class="btn btn-primary" id="btn-generate-doc">
+      Скачать
+    </button>
 </div>
 
 
@@ -882,7 +953,19 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <div class="modal-title">Управление прайс-листами</div>
-        <button class="modal-close-btn" id="pm-btn-close">&times;</button>
+          <div style="display:flex; gap:6px; align-items:center;">
+          <button
+            class="modal-action-btn"
+            id="pm-btn-maximize"
+            title="Развернуть на весь экран"
+          >⛶</button>
+
+          <button
+            class="modal-close-btn"
+            id="pm-btn-close"
+            title="Закрыть"
+          >&times;</button>
+        </div>
       </div>
       <div class="modal-body">
         
@@ -923,14 +1006,30 @@
           </div>
 
           <div class="price-items-wrapper">
-            <div class="price-items-header">Товары в прайсе</div>
+            <div class="price-items-header">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Товары в прайсе</span>
+                <input
+                  type="text"
+                  id="pm-items-search"
+                  placeholder="Поиск товара..."
+                  style="
+                    font-size:12px;
+                    padding:4px 6px;
+                    border:1px solid #c5ced8;
+                    border-radius:4px;
+                    width:220px;
+                  "
+                >
+              </div>
+            </div>
+
             <div class="price-items-table-container">
-              <table class="price-items-table" id="pm-items-table">
-                
-              </table>
+              <table class="price-items-table" id="pm-items-table"></table>
             </div>
           </div>
-        </div>
+
+
       </div>
       <div class="modal-footer">
         <button class="btn" id="pm-btn-cancel">Закрыть</button>
@@ -959,7 +1058,7 @@
     let CURRENT_DEAL_ID = null;
     let APP_READY = false;
 
-    const VAT_RATES = [0, 10, 20];
+    const VAT_RATES = [0, 5, 10, 20];
     const apiBase = ""; 
     const DEAL_STATE_FIELD = "UF_CRM_1764667329";
     const LOCAL_STATE_PREFIX = "prices_widget_state_deal_";
@@ -1488,113 +1587,6 @@
         }
       });
     }
-
-      function initBitrixContext() {
-        if (!window.BX24) {
-          console.warn("BX24 не доступен – работаем в локальном режиме.");
-          return;
-        }
-
-        BX24.ready(function() {
-          BX24.init(function() {
-            BX24.callMethod("placement.getData", {}, function(res) {
-              if (res.error()) {
-                console.error("placement.getData error:", res.error());
-                return;
-              }
-
-              const raw = res.data ? res.data() : res.data || {};
-              console.log("placement.getData raw:", raw);
-
-              let dealId = null;
-
-              
-              if (raw.ID || raw.DEAL_ID || raw.ENTITY_ID || raw.entityId || raw.dealId) {
-                dealId = raw.ID || raw.DEAL_ID || raw.ENTITY_ID || raw.entityId || raw.dealId;
-              }
-
-              
-              if (!dealId && raw.PLACEMENT_OPTIONS) {
-                let opts = raw.PLACEMENT_OPTIONS;
-                try {
-                  if (typeof opts === "string") {
-                    opts = JSON.parse(opts);
-                  }
-                } catch (e) {
-                  console.warn("Ошибка парсинга PLACEMENT_OPTIONS:", e, raw.PLACEMENT_OPTIONS);
-                  opts = {};
-                }
-
-                if (opts) {
-                  dealId =
-                    opts.DEAL_ID ||
-                    opts.Id ||
-                    opts.ID ||
-                    opts.ENTITY_ID ||
-                    opts.entityId ||
-                    opts.dealId;
-                }
-
-                console.log("PLACEMENT_OPTIONS parsed:", opts, "dealId:", dealId);
-              }
-
-              
-              if (!dealId && raw.options) {
-                let opts = raw.options;
-                try {
-                  if (typeof opts === "string") {
-                    opts = JSON.parse(opts);
-                  }
-                } catch (e) {
-                  console.warn("Ошибка парсинга options:", e, raw.options);
-                  opts = {};
-                }
-
-                if (opts) {
-                  dealId =
-                    opts.DEAL_ID ||
-                    opts.Id ||
-                    opts.ID ||
-                    opts.ENTITY_ID ||
-                    opts.entityId ||
-                    opts.dealId;
-                }
-
-                console.log("options parsed:", opts, "dealId:", dealId);
-              }
-
-              
-              if (!dealId && window.location && window.location.search) {
-                const m = window.location.search.match(/[?&](deal_id|DEAL_ID|ID)=(\d+)/i);
-                if (m) {
-                  dealId = m[2];
-                  console.log("dealId from URL:", dealId);
-                }
-              }
-
-              
-              if (dealId) {
-                const digits = String(dealId).match(/\d+/);
-                CURRENT_DEAL_ID = digits ? digits[0] : String(dealId);
-              }
-
-              const tagEl = document.getElementById("tag-deal-info");
-
-              if (CURRENT_DEAL_ID) {
-                if (tagEl) tagEl.textContent = "Сделка: " + CURRENT_DEAL_ID;
-                console.log("Определён ID сделки:", CURRENT_DEAL_ID);
-
-                if (APP_READY) {
-                  loadDealState();
-                }
-              } else {
-                if (tagEl) tagEl.textContent = "Сделка: не определена";
-                console.warn("Не удалось определить ID сделки из placement.getData. raw:", raw);
-              }
-            });
-          });
-        });
-      }
       
       function initBitrixContext() {
         if (!window.BX24) {
@@ -1771,7 +1763,50 @@
       }
     }
     
+  let pmIsFullscreen = false;
+  let pmPrevRect = null;
+
+  function togglePriceManagerFullscreen() {
+    const backdrop = document.getElementById("price-manager-backdrop");
+    if (!backdrop) return;
+
+    const dialog = backdrop.querySelector(".modal-dialog");
+    if (!dialog) return;
+
+    const btn = document.getElementById("pm-btn-maximize"); // <-- важно
+
+    if (!pmIsFullscreen) {
+      // сохраняем текущие реальные размеры/позицию
+      pmPrevRect = {
+        width: dialog.style.width || (dialog.getBoundingClientRect().width + "px"),
+        height: dialog.style.height || (dialog.getBoundingClientRect().height + "px"),
+        left: dialog.style.left || (dialog.offsetLeft + "px"),
+        top: dialog.style.top || (dialog.offsetTop + "px"),
+      };
+
+      dialog.style.left = "20px";
+      dialog.style.top = "20px";
+      dialog.style.width = (window.innerWidth - 40) + "px";
+      dialog.style.height = (window.innerHeight - 40) + "px";
+
+      pmIsFullscreen = true;
+    } else {
+      if (pmPrevRect) {
+        dialog.style.width = pmPrevRect.width;
+        dialog.style.height = pmPrevRect.height;
+        dialog.style.left = pmPrevRect.left;
+        dialog.style.top = pmPrevRect.top;
+      }
+      pmIsFullscreen = false;
+    }
+
+    // иконку меняем ПОСЛЕ переключения
+    if (btn) btn.textContent = pmIsFullscreen ? "❐" : "⛶";
+  }
+
+
     // ------------------ Модалка управления прайсами ------------------
+    let pmItemsSearchTerm = "";
     let pmSelectedId = null;      
     let pmSearchTerm = "";        
     let pmItems = [];            
@@ -2240,9 +2275,15 @@
       const table = document.getElementById("pm-items-table");
       if (!table) return;
 
+      const filteredItems = pmItems.filter(item => {
+        if (!pmItemsSearchTerm) return true;
+        const name = (item.product_name || "").toLowerCase();
+        return name.includes(pmItemsSearchTerm);
+      });
+
       const metaEl = document.getElementById("pm-meta");
 
-      if (!pmItems || !pmItems.length) {
+      if (!filteredItems.length) {
         table.innerHTML = `
           <thead>
             <tr>
@@ -2272,7 +2313,7 @@
         <tbody>
       `;
 
-      pmItems.forEach((item, index) => {
+      filteredItems.forEach((item, index) => {
         const name = item.product_name || "";
         const desc = item.product_description || "";
         const price = item.price != null ? item.price : 0;
@@ -2299,7 +2340,8 @@
       html += "</tbody>";
       table.innerHTML = html;
 
-      if (metaEl) metaEl.textContent = "Товаров в прайсе: " + pmItems.length;
+      if (metaEl) 
+        metaEl.textContent = `Товаров в прайсе: ${filteredItems.length} / ${pmItems.length}`;
 
       const inputs = table.querySelectorAll(".price-item-price-input");
       inputs.forEach(input => {
@@ -2492,6 +2534,9 @@
         return;
       }
 
+      const formatInput = document.querySelector('input[name="doc-format"]:checked');
+      const format = formatInput ? formatInput.value : "pdf";
+
       const variant = variantInput.value;
       const state = getAppStateForSave();
       const totals = collectTotalsForDocs();
@@ -2502,6 +2547,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             variant,
+            format,                 // <-- ДОБАВИЛИ
             deal_id: CURRENT_DEAL_ID,
             lines: state.lines,
             totals
@@ -2515,9 +2561,13 @@
 
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
+
         const a = document.createElement("a");
         a.href = url;
-        a.download = "komercheskoe_predlozhenie.pdf";
+        a.download = (format === "docx")
+          ? "komercheskoe_predlozhenie.docx"
+          : "komercheskoe_predlozhenie.pdf";
+
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -2529,6 +2579,7 @@
         showToast("Ошибка сети при генерации документа", "error");
       }
     }
+
 
     document.addEventListener("DOMContentLoaded", () => {
       productDropdownEl = document.getElementById("product-dropdown");
@@ -2605,7 +2656,22 @@
       const pmBtnCopy = document.getElementById("pm-btn-copy");
       const pmBtnDelete = document.getElementById("pm-btn-delete");
       const pmSearchInput = document.getElementById("pm-search-input");
+      const pmBtnMaximize = document.getElementById("pm-btn-maximize");
+      const pmItemsSearchInput = document.getElementById("pm-items-search");
 
+      if (pmItemsSearchInput) {
+        pmItemsSearchInput.addEventListener("input", (e) => {
+          pmItemsSearchTerm = (e.target.value || "").toLowerCase();
+          renderPriceItemsTable();
+        });
+      }
+
+      if (pmBtnMaximize) {
+        pmBtnMaximize.addEventListener("click", (e) => {
+          e.stopPropagation();
+          togglePriceManagerFullscreen();
+        });
+      }
       if (pmBtnClose) pmBtnClose.addEventListener("click", closePriceManager);
       if (pmBtnCancel) pmBtnCancel.addEventListener("click", closePriceManager);
       if (pmBackdrop) {
