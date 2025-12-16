@@ -116,14 +116,25 @@
     }
 
     .modal-footer {
-      padding: 10px 14px;
+      display: block;
+      align-items: center;
+      padding: 6px 10px;
       border-top: 1px solid #e1e6ec;
-      display: flex;
-      justify-content: flex-end;
       gap: 8px;
-      flex: 0 0 auto;
-      background: #fff;
-      z-index: 2;
+        }
+
+    .modal-footer-spacer{
+      flex: 1 1 auto;
+    }
+
+    .modal-footer-actions{
+      display: flex;
+      gap: 8px;
+    }
+
+    .modal-footer .btn{
+      padding: 6px 10px;
+      line-height: 1.1;
     }
 
     .modal-resize-handle {
@@ -340,6 +351,35 @@
       border-bottom: 1px solid #e3e7ee;
       font-size: 12px;
       font-weight: 600;
+
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .price-items-header-right{
+      display:flex;
+      align-items:center;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .pm-items-search{
+      font-size:14px;
+      padding:4px 6px;
+      border:1px solid #c5ced8;
+      border-radius:4px;
+      width:120px;
+    }
+
+    #pm-items-btn-add{
+      padding: 4px 8px;
+      height: 28px;
+    }
+
+    .pm-items-fs-btn{
+      margin-left: auto;
     }
 
     .price-items-table-container {
@@ -791,6 +831,119 @@
     }
 
 
+    /* Режим: на весь экран только блок товаров внутри модалки */
+    .modal-dialog.pm-items-fullscreen .modal-body{
+      grid-template-columns: 1fr; /* вместо 2 колонок */
+    }
+
+    .modal-dialog.pm-items-fullscreen .price-list-sidebar{
+      display:none;
+    }
+
+    /* скрываем все поля формы, кроме таблицы товаров */
+    .modal-dialog.pm-items-fullscreen .price-list-actions,
+    .modal-dialog.pm-items-fullscreen .price-list-form-row,
+    .modal-dialog.pm-items-fullscreen .price-list-form-meta{
+      display:none;
+    }
+
+    /* таблица занимает максимум */
+    .modal-dialog.pm-items-fullscreen .price-list-form{
+      height: 100%;
+    }
+
+    .modal-dialog.pm-items-fullscreen .price-items-wrapper{
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .pm-footer-grid{
+      width: 100%;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      align-items: center;
+    }
+
+    /* кнопки в правой колонке, прижаты вправо */
+    .pm-footer-actions{
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    /* чуть компактнее область кнопок */
+    .pm-footer-actions .btn{
+      padding: 6px 12px;
+    }
+
+    .modal-dialog.pm-items-fullscreen .pm-footer-grid{
+      grid-template-columns: 1fr;
+    }
+    .modal-dialog.pm-items-fullscreen .pm-footer-grid > div:first-child{
+      display: none;
+    }
+
+    /* Футер модалки прайсов: сетка как у modal-body */
+    .modal-footer.pm-footer{
+      display: grid !important;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+
+      /* чтобы визуально совпало с body */
+      padding: 6px 14px;
+      border-top: 1px solid #e1e6ec;
+    }
+
+    /* кнопки прижимаем вправо во второй колонке */
+    .modal-footer.pm-footer .pm-footer-actions{
+      justify-self: end;
+      display: flex;
+      gap: 8px;
+    }
+
+    /* в режиме "товары на весь экран" скрываем левую колонку */
+    .modal-dialog.pm-items-fullscreen .modal-footer.pm-footer{
+      grid-template-columns: 1fr;
+    }
+    .modal-dialog.pm-items-fullscreen .modal-footer.pm-footer .pm-footer-left{
+      display: none;
+    }
+    
+    /* футер повторяет сетку modal-body: (сайдбар 280px) + (правая часть) */
+    #pm-footer{
+      display: grid !important;
+      grid-template-columns: 280px minmax(0, 1fr);
+      align-items: center;
+      padding: 8px 14px;
+      gap: 8px;
+      padding-right: 100px;
+    }
+
+    /* кнопки лежат во 2й колонке и прижаты вправо */
+    #pm-footer .pm-footer-actions{
+      grid-column: 2;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    /* компактнее */
+    #pm-footer .pm-footer-actions .btn{
+      padding: 6px 10px;
+      line-height: 1.1;
+    }
+
+    /* когда items fullscreen — сайдбар скрыт, футер одной колонкой */
+    .modal-dialog.pm-items-fullscreen #pm-footer{
+      grid-template-columns: 1fr;
+    }
+    .modal-dialog.pm-items-fullscreen #pm-footer .pm-footer-actions{
+      grid-column: 1;
+    }
+
+
+
   </style>
 </head>
 <body>
@@ -1007,20 +1160,29 @@
 
           <div class="price-items-wrapper">
             <div class="price-items-header">
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span>Товары в прайсе</span>
+              <span>Товары в прайсе</span>
+
+              <div class="price-items-header-right">
+                <button
+                  class="btn"
+                  id="pm-items-btn-add"
+                  type="button"
+                  title="Добавить товар в прайс"
+                >+ Товар</button>
+
                 <input
                   type="text"
                   id="pm-items-search"
                   placeholder="Поиск товара..."
-                  style="
-                    font-size:12px;
-                    padding:4px 6px;
-                    border:1px solid #c5ced8;
-                    border-radius:4px;
-                    width:220px;
-                  "
+                  class="pm-items-search"
                 >
+
+                <button
+                  class="modal-action-btn"
+                  id="pm-items-btn-maximize"
+                  title="Развернуть товары на весь экран"
+                  type="button"
+                >⛶</button>
               </div>
             </div>
 
@@ -1028,12 +1190,15 @@
               <table class="price-items-table" id="pm-items-table"></table>
             </div>
           </div>
-
-
       </div>
-      <div class="modal-footer">
-        <button class="btn" id="pm-btn-cancel">Закрыть</button>
-        <button class="btn btn-success" id="pm-btn-save">Сохранить</button>
+    </div>
+      <div class="modal-footer" id="pm-footer">
+        <div class="modal-footer-spacer"></div>
+
+        <div class="pm-footer-actions">
+          <button class="btn" id="pm-btn-cancel">Закрыть</button>
+          <button class="btn btn-success" id="pm-btn-save">Сохранить</button>
+        </div>
       </div>
 
       <div class="modal-resize-handle resize-right"></div>
@@ -1068,6 +1233,8 @@
     let productDropdownEl = null;
     let productDropdownListEl = null;
     let productSearchInputEl = null;
+    let productDropdownMode = "line";
+    let pmAddAnchorEl = null;
 
     function formatMoney(value) {
       let num = Number(value);
@@ -1282,8 +1449,11 @@
     }
 
     function openProductDropdown(inputEl, line) {
+      // режим выбора товара в строку таблицы КП
+      productDropdownMode = "line";
       currentProductInput = inputEl;
       currentProductLine = line;
+      pmAddAnchorEl = null;
 
       if (!productDropdownEl) return;
 
@@ -1291,9 +1461,34 @@
       const top = rect.bottom + window.scrollY;
       const left = rect.left + window.scrollX;
 
-      // чуть шире инпута
       const extraWidth = 40;
       productDropdownEl.style.width = (rect.width + extraWidth) + "px";
+      productDropdownEl.style.left = left + "px";
+      productDropdownEl.style.top = top + "px";
+
+      productSearchInputEl.value = "";
+      renderProductDropdownList("");
+
+      productDropdownEl.style.display = "block";
+      productDropdownEl.classList.add("visible");
+
+      setTimeout(() => productSearchInputEl.focus(), 10);
+    }
+
+    function openPmAddProductDropdown(anchorEl) {
+      productDropdownMode = "pm_add";
+      pmAddAnchorEl = anchorEl;
+
+      currentProductLine = null;
+      currentProductInput = null;
+
+      if (!productDropdownEl) return;
+
+      const rect = anchorEl.getBoundingClientRect();
+      const top = rect.bottom + window.scrollY + 6;
+      const left = rect.left + window.scrollX;
+
+      productDropdownEl.style.width = "520px";
       productDropdownEl.style.left = left + "px";
       productDropdownEl.style.top = top + "px";
 
@@ -1352,19 +1547,40 @@
 
         row.addEventListener("click", async (e) => {
           e.stopPropagation();
-            if (!currentProductLine || !currentProductInput) return;
 
-            currentProductLine.productId = p.id;
-            currentProductLine.productName = p.name || "";
-            currentProductInput.value = p.name || "";
+          if (productDropdownMode === "pm_add") {
+            // добавление товара в текущий прайс-лист
+            const exists = pmItems.some(it => String(it.product_id) === String(p.id));
+            if (exists) {
+              showToast("Этот товар уже есть в прайс-листе", "error");
+              closeProductDropdown();
+              return;
+            }
 
-            const lineRef = currentProductLine;
+            pmItems.push({
+              product_id: p.id,
+              product_name: p.name || "",
+              product_description: p.description || "",
+              price: 0
+            });
 
+            pmItemsDirty = true;
             closeProductDropdown();
+            renderPriceItemsTable();
+            return;
+          }
 
-            await autoUpdatePriceAndRecalc(lineRef);
+          // режим выбора товара в строку КП
+          if (!currentProductLine || !currentProductInput) return;
+
+          currentProductLine.productId = p.id;
+          currentProductLine.productName = p.name || "";
+          currentProductInput.value = p.name || "";
+
+          const lineRef = currentProductLine;
+          closeProductDropdown();
+          await autoUpdatePriceAndRecalc(lineRef);
         });
-
         productDropdownListEl.appendChild(row);
       });
     }
@@ -1766,6 +1982,42 @@
   let pmIsFullscreen = false;
   let pmPrevRect = null;
 
+  let pmItemsIsFullscreen = false;
+  let pmWasFullscreenBeforeItems = false;
+
+  function togglePriceItemsFullscreen() {
+    const backdrop = document.getElementById("price-manager-backdrop");
+    if (!backdrop) return;
+
+    const dialog = backdrop.querySelector(".modal-dialog");
+    if (!dialog) return;
+
+    const btn = document.getElementById("pm-items-btn-maximize");
+    if (!btn) return;
+
+    if (!pmItemsIsFullscreen) {
+      // запомним, был ли диалог уже во весь экран
+      pmWasFullscreenBeforeItems = pmIsFullscreen;
+
+      // для “по-настоящему большого” режима товаров — разворачиваем и модалку тоже
+      if (!pmIsFullscreen) togglePriceManagerFullscreen();
+
+      dialog.classList.add("pm-items-fullscreen");
+      btn.textContent = "❐";
+      pmItemsIsFullscreen = true;
+    } else {
+      dialog.classList.remove("pm-items-fullscreen");
+      btn.textContent = "⛶";
+      pmItemsIsFullscreen = false;
+
+      // если модалку разворачивали только ради товаров — вернём как было
+      if (!pmWasFullscreenBeforeItems && pmIsFullscreen) {
+        togglePriceManagerFullscreen();
+      }
+    }
+  }
+
+
   function togglePriceManagerFullscreen() {
     const backdrop = document.getElementById("price-manager-backdrop");
     if (!backdrop) return;
@@ -1773,7 +2025,7 @@
     const dialog = backdrop.querySelector(".modal-dialog");
     if (!dialog) return;
 
-    const btn = document.getElementById("pm-btn-maximize"); // <-- важно
+    const btn = document.getElementById("pm-btn-maximize");
 
     if (!pmIsFullscreen) {
       // сохраняем текущие реальные размеры/позицию
@@ -2099,6 +2351,8 @@
       const backdrop = document.getElementById("price-manager-backdrop");
       if (!backdrop) return;
 
+      resetPriceManagerFullscreenState();
+
       const dialog = backdrop.querySelector(".modal-dialog");
 
       backdrop.classList.add("visible");
@@ -2136,14 +2390,113 @@
       if (searchInput) searchInput.value = "";
 
       loadPriceListsForManager();
+
+      pmIsFullscreen = false;
+      setPriceManagerFullscreen(true);
     }
 
-    function closePriceManager() {
+    function setPriceManagerFullscreen(isOn) {
       const backdrop = document.getElementById("price-manager-backdrop");
       if (!backdrop) return;
 
+      const dialog = backdrop.querySelector(".modal-dialog");
+      if (!dialog) return;
+
+      const btn = document.getElementById("pm-btn-maximize");
+
+      // включаем fullscreen
+      if (isOn) {
+        // ✅ сохраняем "предыдущее" состояние ОДИН раз, если сейчас не fullscreen
+        if (!pmIsFullscreen) {
+          const rect = dialog.getBoundingClientRect();
+          pmPrevRect = {
+            width: dialog.style.width || rect.width + "px",
+            height: dialog.style.height || rect.height + "px",
+            left: dialog.style.left || dialog.offsetLeft + "px",
+            top: dialog.style.top || dialog.offsetTop + "px",
+          };
+        }
+
+        dialog.style.left = "20px";
+        dialog.style.top = "20px";
+        dialog.style.width = "calc(100vw - 40px)";
+        dialog.style.height = "calc(100vh - 40px)";
+
+        pmIsFullscreen = true;
+        if (btn) btn.textContent = "❐";
+        return;
+      }
+
+      // выключаем fullscreen (✅ восстанавливаем сохранённый прямоугольник)
+      if (pmPrevRect) {
+        dialog.style.width = pmPrevRect.width;
+        dialog.style.height = pmPrevRect.height;
+        dialog.style.left = pmPrevRect.left;
+        dialog.style.top = pmPrevRect.top;
+      } else {
+        // fallback если вдруг не было сохранения
+        dialog.style.width = "900px";
+        dialog.style.height = "500px";
+
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const left = Math.max((vw - 900) / 2, 20);
+        const top = Math.max((vh - 500) / 2, 20);
+
+        dialog.style.left = left + "px";
+        dialog.style.top = top + "px";
+      }
+
+      pmIsFullscreen = false;
+      if (btn) btn.textContent = "⛶";
+    }
+
+
+    function resetPriceManagerFullscreenState() {
+      pmIsFullscreen = false;
+      pmPrevRect = null;
+
+      const backdrop = document.getElementById("price-manager-backdrop");
+      const dialog = backdrop?.querySelector(".modal-dialog");
+      const btn = document.getElementById("pm-btn-maximize");
+
+      if (btn) btn.textContent = "⛶"; // состояние “не развернуто”
+      if (dialog) {
+        // на всякий случай убираем стили, если они остались
+        dialog.style.width = "";
+        dialog.style.height = "";
+        dialog.style.left = "";
+        dialog.style.top = "";
+      }
+    }
+
+    function closePriceManager() {
+      if (!confirmClosePriceManager()) {
+        return;
+      }
+
+      resetPriceManagerFullscreenState();
+
+      const backdrop = document.getElementById("price-manager-backdrop");
+      if (!backdrop) return;
+
+      const dialog = backdrop.querySelector(".modal-dialog");
+      if (dialog) dialog.classList.remove("pm-items-fullscreen");
+      pmItemsIsFullscreen = false;
+
       backdrop.classList.remove("visible");
       backdrop.style.display = "none";
+    }
+
+    function confirmClosePriceManager() {
+      if (!pmItemsDirty) {
+        return true;
+      }
+
+      return confirm(
+        "У вас есть несохранённые изменения.\n\n" +
+        "Вы уверены, что хотите закрыть окно и потерять изменения?"
+      );
     }
 
     function getFilteredPriceLists() {
@@ -2308,6 +2661,7 @@
             <th style="width:40px;">#</th>
             <th style="width:110px;">Цена</th>
             <th>Товар</th>
+            <th style="width:44px;"></th>
           </tr>
         </thead>
         <tbody>
@@ -2318,6 +2672,8 @@
         const desc = item.product_description || "";
         const price = item.price != null ? item.price : 0;
 
+        const pid = item.product_id;
+
         html += `
           <tr>
             <td>${index + 1}</td>
@@ -2325,13 +2681,22 @@
               <input
                 type="text"
                 class="price-item-price-input"
-                data-index="${index}"
+                data-pid="${pid}"
                 value="${formatMoney(price)}"
               >
             </td>
             <td>
               <div style="font-size:12px;font-weight:500;">${name}</div>
               ${desc ? `<div style="font-size:11px;color:#888;">${desc}</div>` : ""}
+            </td>
+            <td style="text-align:center;">
+              <button
+                class="btn btn-light pm-item-del-btn"
+                data-pid="${pid}"
+                type="button"
+                title="Удалить из прайса"
+                style="padding:4px 6px;"
+              >🗑</button>
             </td>
           </tr>
         `;
@@ -2348,15 +2713,17 @@
         input.style.width = "100%";
 
         input.addEventListener("focus", () => {
-          const idx = Number(input.dataset.index);
-          const item = pmItems[idx];
+          const pid = String(input.dataset.pid);
+          const item = pmItems.find(x => String(x.product_id) === pid);
+          if (!item) return;
           const num = Number(item.price) || 0;
           input.value = num.toString().replace(".", ",");
         });
 
         input.addEventListener("blur", () => {
-          const idx = Number(input.dataset.index);
-          const item = pmItems[idx];
+          const pid = String(input.dataset.pid);
+          const item = pmItems.find(x => String(x.product_id) === pid);
+          if (!item) return;
           let raw = input.value || "";
           raw = raw.replace(/\s+/g, "").replace(",", ".");
           let num = Number(raw);
@@ -2366,6 +2733,19 @@
           input.value = formatMoney(item.price);
         });
       });
+      table.querySelectorAll(".pm-item-del-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const pid = String(btn.dataset.pid);
+          const it = pmItems.find(x => String(x.product_id) === pid);
+          const title = it?.product_name || "товар";
+
+          if (!confirm(`Удалить "${title}" из прайс-листа?`)) return;
+
+          pmItems = pmItems.filter(x => String(x.product_id) !== pid);
+          pmItemsDirty = true;
+          renderPriceItemsTable();
+        });
+      }); 
     }
 
 
@@ -2658,6 +3038,15 @@
       const pmSearchInput = document.getElementById("pm-search-input");
       const pmBtnMaximize = document.getElementById("pm-btn-maximize");
       const pmItemsSearchInput = document.getElementById("pm-items-search");
+      const pmItemsBtnMaximize = document.getElementById("pm-items-btn-maximize");
+
+      const pmItemsBtnAdd = document.getElementById("pm-items-btn-add");
+      if (pmItemsBtnAdd) {
+        pmItemsBtnAdd.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openPmAddProductDropdown(pmItemsBtnAdd);
+        });
+      }
 
       if (pmItemsSearchInput) {
         pmItemsSearchInput.addEventListener("input", (e) => {
@@ -2669,14 +3058,23 @@
       if (pmBtnMaximize) {
         pmBtnMaximize.addEventListener("click", (e) => {
           e.stopPropagation();
-          togglePriceManagerFullscreen();
+          setPriceManagerFullscreen(!pmIsFullscreen);
         });
       }
+
+      if (pmItemsBtnMaximize) {
+        pmItemsBtnMaximize.addEventListener("click", (e) => {
+          e.stopPropagation();
+          togglePriceItemsFullscreen();
+        });
+      }
+
       if (pmBtnClose) pmBtnClose.addEventListener("click", closePriceManager);
       if (pmBtnCancel) pmBtnCancel.addEventListener("click", closePriceManager);
       if (pmBackdrop) {
         pmBackdrop.addEventListener("click", (e) => {
           if (pmIsDragging || pmIsResizing) return;
+
           if (e.target === pmBackdrop) {
             closePriceManager();
           }

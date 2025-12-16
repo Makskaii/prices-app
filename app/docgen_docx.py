@@ -13,7 +13,7 @@ from docx.oxml.ns import qn
 from docx.shared import Mm, Pt
 
 
-DOCX_TABLE_FONT_PT = 9  # было 8 — увеличили
+DOCX_TABLE_FONT_PT = 9
 
 
 def _safe_num(v) -> float:
@@ -39,6 +39,10 @@ def _set_cell_text(cell, text: str, bold: bool = False, size_pt: int | None = No
     p = cell.paragraphs[0]
     if align is not None:
         p.alignment = align
+
+    # важно: разрешаем перенос слов внутри ячейки (чтобы текст не раздвигал таблицу)
+    p.paragraph_format.word_wrap = True
+
     run = p.add_run(text or "")
     run.bold = bool(bold)
     if size_pt is not None:
@@ -119,6 +123,7 @@ def _resolve_logo_path(context: Dict[str, Any]) -> str | None:
 
 def _apply_page_setup(doc: Document) -> None:
     section = doc.sections[0]
+    # A4 по умолчанию обычно и так, но отступы — как в PDF
     section.top_margin = Mm(20)
     section.bottom_margin = Mm(20)
     section.left_margin = Mm(20)
@@ -232,7 +237,7 @@ def _add_center_title(doc: Document, text: str, bold: bool = True, size_pt: int 
 
 def _variant_columns(variant: str) -> Tuple[List[str], List[int]]:
     """
-    Увеличили ширины, чтобы таблица выглядела крупнее и “как в PDF”.
+    widths в миллиметрах. Важно: сумма должна быть <= (210 - 20 - 15) = 175мм
     """
     if variant == "kp_tp_basic":
         headers = ["№", "Программное обеспечение PrimeGeo", "Кол-во, ед.", "Цена, руб.", "Стоимость, руб.", "Сумма НДС, руб.", "Стоимость с НДС, руб."]
@@ -249,11 +254,56 @@ def _variant_columns(variant: str) -> Tuple[List[str], List[int]]:
         widths =  [7,   100,                               14,          22,           32]
         return headers, widths
 
-    # default kp_tp_discount
     headers = ["№", "Программное обеспечение PrimeGeo", "Кол-во, ед.", "Цена, руб.", "Стоимость, руб.",
                "Стоимость со скидкой, руб.", "Сумма НДС, руб.", "Стоимость с НДС, руб."]
     widths =  [7,   62,                                14,          16,           18,                 24,               16,             18]
     return headers, widths
+
+
+# ---------- ВАЖНО: фиксация layout таблицы (чтобы не "уезжала") ----------
+
+def _mm_to_twips(mm: int) -> int:
+    # 1 inch = 25.4 mm, 1 twip = 1/1440 inch
+    return int(mm * 1440 / 25.4)
+
+
+def _force_fixed_table_layout(table, total_width_mm: int) -> None:
+    """
+    Говорим Word: таблица фиксированная и заданной ширины.
+    Это убирает расползание на разных Word/LibreOffice.
+    """
+    tbl = table._tbl
+    tblPr = tbl.tblPr
+
+    # w:tblLayout w:type="fixed"
+    tblLayout = tblPr.find(qn("w:tblLayout"))
+    if tblLayout is None:
+        tblLayout = OxmlElement("w:tblLayout")
+        tblPr.append(tblLayout)
+    tblLayout.set(qn("w:type"), "fixed")
+
+    # w:tblW w:type="dxa" w:w="..."
+    tblW = tblPr.find(qn("w:tblW"))
+    if tblW is None:
+        tblW = OxmlElement("w:tblW")
+        tblPr.append(tblW)
+    tblW.set(qn("w:type"), "dxa")
+    tblW.set(qn("w:w"), str(_mm_to_twips(total_width_mm)))
+
+
+def _apply_column_widths_strict(table, widths_mm: List[int]) -> None:
+    """
+    Назначаем ширину:
+      - колонкам
+      - каждой ячейке каждой строки
+    Иначе Word иногда "забывает" widths при рендере.
+    """
+    for i, w in enumerate(widths_mm):
+        table.columns[i].width = Mm(w)
+
+    for row in table.rows:
+        for i, w in enumerate(widths_mm):
+            row.cells[i].width = Mm(w)
 
 
 def _add_products_table(doc: Document, variant: str, lines: List[Dict[str, Any]], totals: Dict[str, float]) -> None:
@@ -264,8 +314,10 @@ def _add_products_table(doc: Document, variant: str, lines: List[Dict[str, Any]]
     table.autofit = False
     table.alignment = WD_TABLE_ALIGNMENT.LEFT
 
-    for i, w in enumerate(widths):
-        table.columns[i].width = Mm(w)
+    # фиксируем layout и ширину таблицы (в пределах печатной области)
+    total_w = sum(widths)
+    _force_fixed_table_layout(table, total_w)
+    _apply_column_widths_strict(table, widths)
 
     # заголовок
     for i, h in enumerate(headers):
@@ -278,11 +330,14 @@ def _add_products_table(doc: Document, variant: str, lines: List[Dict[str, Any]]
         nums = _calc_line_numbers(line)
         name = line.get("productName") or ""
 
-        row = table.add_row().cells
+        row_cells = table.add_row().cells
+        # после add_row — ещё раз жёстко назначаем ширины ячеек
+        for i, w in enumerate(widths):
+            row_cells[i].width = Mm(w)
 
         def setc(ci: int, text: str, align=WD_ALIGN_PARAGRAPH.LEFT):
-            _set_cell_text(row[ci], text, bold=False, size_pt=DOCX_TABLE_FONT_PT, align=align)
-            row[ci].vertical_alignment = WD_ALIGN_VERTICAL.TOP
+            _set_cell_text(row_cells[ci], text, bold=False, size_pt=DOCX_TABLE_FONT_PT, align=align)
+            row_cells[ci].vertical_alignment = WD_ALIGN_VERTICAL.TOP
 
         setc(0, str(idx), WD_ALIGN_PARAGRAPH.CENTER)
         setc(1, name, WD_ALIGN_PARAGRAPH.LEFT)
@@ -304,7 +359,6 @@ def _add_products_table(doc: Document, variant: str, lines: List[Dict[str, Any]]
             setc(6, _fmt_money(nums["total_val"]), WD_ALIGN_PARAGRAPH.RIGHT)
 
         else:
-            # kp_tp_discount
             setc(3, _fmt_money(nums["price"]), WD_ALIGN_PARAGRAPH.RIGHT)
             setc(4, _fmt_money(nums["base"]), WD_ALIGN_PARAGRAPH.RIGHT)
             setc(5, _fmt_money(nums["base_after_discount"]), WD_ALIGN_PARAGRAPH.RIGHT)
@@ -312,8 +366,11 @@ def _add_products_table(doc: Document, variant: str, lines: List[Dict[str, Any]]
             setc(7, _fmt_money(nums["total_val"]), WD_ALIGN_PARAGRAPH.RIGHT)
 
     # итого
-    row = table.add_row().cells
-    _set_cell_text(row[1], "Итого:", bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
+    row_cells = table.add_row().cells
+    for i, w in enumerate(widths):
+        row_cells[i].width = Mm(w)
+
+    _set_cell_text(row_cells[1], "Итого:", bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
 
     base = float(totals.get("base") or 0.0)
     discount = float(totals.get("discount") or 0.0)
@@ -321,29 +378,25 @@ def _add_products_table(doc: Document, variant: str, lines: List[Dict[str, Any]]
     total = float(totals.get("total") or 0.0)
 
     if variant == "kp_tp_no_vat_nodiscount":
-        _set_cell_text(row[4], _fmt_money(base), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
+        _set_cell_text(row_cells[4], _fmt_money(base), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
 
     elif variant == "kp_tp_no_vat":
-        _set_cell_text(row[4], _fmt_money(base), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
-        _set_cell_text(row[5], _fmt_money(base - discount), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
+        _set_cell_text(row_cells[4], _fmt_money(base), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
+        _set_cell_text(row_cells[5], _fmt_money(base - discount), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
 
     elif variant == "kp_tp_basic":
-        _set_cell_text(row[4], _fmt_money(base), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
-        _set_cell_text(row[5], _fmt_money(vat), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
-        _set_cell_text(row[6], _fmt_money(total), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
+        _set_cell_text(row_cells[4], _fmt_money(base), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
+        _set_cell_text(row_cells[5], _fmt_money(vat), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
+        _set_cell_text(row_cells[6], _fmt_money(total), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
 
     else:
-        _set_cell_text(row[4], _fmt_money(base), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
-        _set_cell_text(row[5], _fmt_money(base - discount), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
-        _set_cell_text(row[6], _fmt_money(vat), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
-        _set_cell_text(row[7], _fmt_money(total), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
+        _set_cell_text(row_cells[4], _fmt_money(base), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
+        _set_cell_text(row_cells[5], _fmt_money(base - discount), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
+        _set_cell_text(row_cells[6], _fmt_money(vat), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
+        _set_cell_text(row_cells[7], _fmt_money(total), bold=True, size_pt=DOCX_TABLE_FONT_PT, align=WD_ALIGN_PARAGRAPH.RIGHT)
 
 
 def _add_post_table_text(doc: Document, variant: str) -> None:
-    """
-    Текст, которого сейчас нет в DOCX, но есть в PDF-шаблоне (в варианте “без НДС”).
-    Если нужно — включим для других вариантов тоже.
-    """
     if variant not in ("kp_tp_no_vat", "kp_tp_no_vat_nodiscount"):
         return
 
@@ -355,10 +408,9 @@ def _add_post_table_text(doc: Document, variant: str) -> None:
         "2. Гибкая система скидок.",
     ]
 
-    for i, t in enumerate(lines):
+    for t in lines:
         p = doc.add_paragraph(t)
         p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        # делаем мелкий “служебный” текст как в PDF
         for r in p.runs:
             r.font.size = Pt(10)
 
@@ -407,9 +459,7 @@ def build_docx_for_variant(template_variant: str, context: Dict[str, Any]) -> by
     _add_products_table(doc, template_variant, lines, totals)
     _add_spacer(doc, 3)
 
-    # ✅ добавили недостающий текст
     _add_post_table_text(doc, template_variant)
-
     _add_footer_contacts(doc, context)
 
     out = BytesIO()
