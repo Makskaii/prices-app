@@ -397,10 +397,6 @@
       table-layout: fixed;
     }
 
-    .price-items-table th:nth-child(1) { width: 40px; }
-    .price-items-table th:nth-child(2) { width: 100px; }
-    .price-items-table th:nth-child(3) { width: auto; }
-
     .price-items-table td:nth-child(2) {
       width: 60px;
       min-width: 60px;           
@@ -928,13 +924,11 @@
       gap: 8px;
     }
 
-    /* компактнее */
     #pm-footer .pm-footer-actions .btn{
       padding: 6px 10px;
       line-height: 1.1;
     }
 
-    /* когда items fullscreen — сайдбар скрыт, футер одной колонкой */
     .modal-dialog.pm-items-fullscreen #pm-footer{
       grid-template-columns: 1fr;
     }
@@ -942,7 +936,34 @@
       grid-column: 1;
     }
 
+    .price-items-table th,
+    .price-items-table td {
+      white-space: normal !important;
+    }
 
+    .price-items-table th:nth-child(1),
+    .price-items-table td:nth-child(1) { width: 34px; min-width:34px; max-width:34px; text-align:center; }
+
+    .price-items-table th:nth-child(2),
+    .price-items-table td:nth-child(2) { width: 40px; min-width:40px; max-width:40px; }
+
+    .price-items-table th:nth-child(3),
+    .price-items-table td:nth-child(3) { width: 110px; min-width:110px; max-width:110px; }
+
+    .price-items-table th:nth-child(5),
+    .price-items-table td:nth-child(5) { width: 44px; min-width:44px; max-width:44px; text-align:center; }
+
+    .price-items-table th:nth-child(4),
+    .price-items-table td:nth-child(4) {
+      overflow: hidden;
+      padding-right: 12px;
+    }
+
+    .pm-item-title,
+    .pm-item-desc {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
 
   </style>
 </head>
@@ -1139,9 +1160,9 @@
 
         <div class="price-list-form">
           <div class="price-list-actions">
-            <button class="btn btn-primary" id="pm-btn-new">Новый прайс</button>
+            <button class="btn btn-primary" id="pm-btn-new">Добавить новый прайс</button>
             <button class="btn" id="pm-btn-copy">Копировать</button>
-            <button class="btn btn-danger" id="pm-btn-delete">Удалить</button>
+            <button class="btn btn-danger" id="pm-btn-delete" title="Удалить выбранный прайс-лист">Удалить прайс-лист</button>
           </div>
 
           <div class="price-list-form-row">
@@ -1168,7 +1189,11 @@
                   id="pm-items-btn-add"
                   type="button"
                   title="Добавить товар в прайс"
-                >+ Товар</button>
+                >Добавить товар</button>
+
+                <button class="btn btn-danger" id="pm-items-btn-del-selected" type="button" title="Удалить выбранные товары">
+                  Удалить товар
+                </button>
 
                 <input
                   type="text"
@@ -1222,6 +1247,8 @@
     let lines = [];
     let CURRENT_DEAL_ID = null;
     let APP_READY = false;
+    let hasUnsavedChanges = false;
+
 
     const VAT_RATES = [0, 5, 10, 20];
     const apiBase = ""; 
@@ -1349,6 +1376,7 @@
         lines = [createEmptyLine()];
         recalcAll();
         renderLines();
+        markSaved();
         return;
       }
 
@@ -1364,7 +1392,7 @@
         recalcLine(line);
         return line;
       });
-
+      markDirty();
       recalcAll();
       renderLines();
     }
@@ -1545,6 +1573,7 @@
         row.appendChild(nameEl);
         row.appendChild(metaEl);
 
+
         row.addEventListener("click", async (e) => {
           e.stopPropagation();
 
@@ -1561,7 +1590,8 @@
               product_id: p.id,
               product_name: p.name || "",
               product_description: p.description || "",
-              price: 0
+              price: 0,
+              selected: false
             });
 
             pmItemsDirty = true;
@@ -1630,6 +1660,7 @@
         
         inputProduct.addEventListener("input", () => {
           line.productName = inputProduct.value;
+          markDirty();
         });
 
         tdProduct.appendChild(inputProduct);
@@ -1681,6 +1712,7 @@
           line.price = num;
           recalcLine(line);
           updateSummary();
+          markDirty();
 
           inputPrice.value = formatMoney(line.price);
           tdTotal.textContent = formatMoney(line.total);
@@ -1703,6 +1735,7 @@
           line.quantity = Number(inputQty.value) || 0;
           recalcLine(line);
           updateSummary();
+          markDirty();
           tdTotal.textContent = formatMoney(line.total);
         });
         const unitSpan = document.createElement("span");
@@ -1726,6 +1759,7 @@
           line.discountPercent = Number(inputDiscount.value) || 0;
           recalcLine(line);
           updateSummary();
+          markDirty();
           tdTotal.textContent = formatMoney(line.total);
         });
         tdDiscount.appendChild(inputDiscount);
@@ -1746,6 +1780,7 @@
           line.vatPercent = Number(selectVat.value) || 0;
           recalcLine(line);
           updateSummary();
+          markDirty();
           tdTotal.textContent = formatMoney(line.total);
         });
         tdVat.appendChild(selectVat);
@@ -2310,42 +2345,52 @@
         .addEventListener("mousedown", (e) => startResize(e, "corner-lt"));
     }
 
-    function showToast(message, type = "success") {
-    const container = document.getElementById("toast-container");
-    if (!container) return;
+    function markDirty() {
+      hasUnsavedChanges = true;
 
-    const toast = document.createElement("div");
-    toast.className = "toast";
-    if (type !== "success") {
-      toast.classList.add("toast-error");
+      const toast = document.querySelector(".toast.persistent");
+      if (toast) {
+        toast.classList.remove("visible");
+        setTimeout(() => toast.remove(), 200);
+      }
     }
 
-    const icon = document.createElement("div");
-    icon.className = "toast-icon";
-    icon.textContent = (type === "success") ? "✓" : "!";
+    function markSaved() {
+      hasUnsavedChanges = false;
+    }
 
-    const text = document.createElement("div");
-    text.className = "toast-text";
-    text.textContent = message;
+    function showToast(message, type = "success", persistent = false) {
+      const container = document.getElementById("toast-container");
+      if (!container) return;
 
-    toast.appendChild(icon);
-    toast.appendChild(text);
+      if (persistent && container.querySelector(".toast.persistent")) return;
 
-    container.appendChild(toast);
+      const toast = document.createElement("div");
+      toast.className = "toast";
+      if (type !== "success") toast.classList.add("toast-error");
+      if (persistent) toast.classList.add("persistent");
 
-    setTimeout(() => {
-      toast.classList.add("visible");
-    }, 10);
+      const icon = document.createElement("div");
+      icon.className = "toast-icon";
+      icon.textContent = (type === "success") ? "✓" : "!";
 
-    setTimeout(() => {
-      toast.classList.remove("visible");
-      setTimeout(() => {
-        if (toast.parentNode === container) {
-          container.removeChild(toast);
-        }
-      }, 200);
-    }, 2500);
-  }
+      const text = document.createElement("div");
+      text.className = "toast-text";
+      text.textContent = message;
+
+      toast.appendChild(icon);
+      toast.appendChild(text);
+      container.appendChild(toast);
+
+      setTimeout(() => toast.classList.add("visible"), 10);
+
+      if (!persistent) {
+        setTimeout(() => {
+          toast.classList.remove("visible");
+          setTimeout(() => toast.remove(), 200);
+        }, 2500);
+      }
+    }
 
     function openPriceManager() {
       const backdrop = document.getElementById("price-manager-backdrop");
@@ -2615,7 +2660,7 @@
         if (!res.ok) throw new Error("Ошибка загрузки товаров прайса");
         const data = await res.json() || [];
 
-        pmItems = data;
+        pmItems = (data || []).map(x => ({ ...x, selected: false }));
         pmItemsDirty = false;
         renderPriceItemsTable();
       } catch (e) {
@@ -2658,6 +2703,9 @@
       let html = `
         <thead>
           <tr>
+            <th style="width:34px; text-align:center;">
+            <input type="checkbox" id="pm-cb-select-all">
+            </th>
             <th style="width:40px;">#</th>
             <th style="width:110px;">Цена</th>
             <th>Товар</th>
@@ -2676,6 +2724,9 @@
 
         html += `
           <tr>
+            <td style="text-align:center;">
+            <input type="checkbox" class="pm-cb-item" data-pid="${pid}">
+            </td>
             <td>${index + 1}</td>
             <td>
               <input
@@ -2686,8 +2737,8 @@
               >
             </td>
             <td>
-              <div style="font-size:12px;font-weight:500;">${name}</div>
-              ${desc ? `<div style="font-size:11px;color:#888;">${desc}</div>` : ""}
+              <div class="pm-item-title">${name}</div>
+              ${desc ? `<div class="pm-item-desc">${desc}</div>` : ""}
             </td>
             <td style="text-align:center;">
               <button
@@ -2696,7 +2747,7 @@
                 type="button"
                 title="Удалить из прайса"
                 style="padding:4px 6px;"
-              >🗑</button>
+              >❌</button>
             </td>
           </tr>
         `;
@@ -2704,6 +2755,48 @@
 
       html += "</tbody>";
       table.innerHTML = html;
+
+      // --- чекбоксы ---
+      const cbAll = table.querySelector("#pm-cb-select-all");
+      const cbItems = table.querySelectorAll(".pm-cb-item");
+
+      // выставляем состояние чекбоксов по данным
+      cbItems.forEach(cb => {
+        const pid = String(cb.dataset.pid);
+        const it = pmItems.find(x => String(x.product_id) === pid);
+        cb.checked = !!it?.selected;
+
+        cb.addEventListener("change", () => {
+          if (!it) return;
+          it.selected = cb.checked;
+
+          // обновим "выбрать все"
+          const visible = filteredItems.map(x => String(x.product_id));
+          const allChecked = visible.length > 0 && visible.every(id => {
+            const v = pmItems.find(z => String(z.product_id) === id);
+            return !!v?.selected;
+          });
+          if (cbAll) cbAll.checked = allChecked;
+        });
+      });
+
+      if (cbAll) {
+        // состояние "выбрать все" по текущему фильтру (видимым строкам)
+        const visibleIds = filteredItems.map(x => String(x.product_id));
+        cbAll.checked = visibleIds.length > 0 && visibleIds.every(id => {
+          const v = pmItems.find(z => String(z.product_id) === id);
+          return !!v?.selected;
+        });
+
+        cbAll.addEventListener("change", () => {
+          const checked = cbAll.checked;
+          filteredItems.forEach(fi => {
+            const it = pmItems.find(x => String(x.product_id) === String(fi.product_id));
+            if (it) it.selected = checked;
+          });
+          renderPriceItemsTable(); // перерисуем, чтобы чекбоксы обновились
+        });
+      }
 
       if (metaEl) 
         metaEl.textContent = `Товаров в прайсе: ${filteredItems.length} / ${pmItems.length}`;
@@ -2973,8 +3066,16 @@
 
       // клик по фону закрывает дропдаун
       document.addEventListener("click", (e) => {
+        const toast = document.querySelector(".toast.persistent");
+        if (toast) {
+          toast.classList.remove("visible");
+          setTimeout(() => toast.remove(), 200);
+        }
+
+        // 2) Закрываем dropdown как раньше
         if (!productDropdownEl) return;
         if (!productDropdownEl.classList.contains("visible")) return;
+
         if (
           !productDropdownEl.contains(e.target) &&
           e.target !== currentProductInput
@@ -2986,6 +3087,7 @@
       document.getElementById("btn-add-row").addEventListener("click", () => {
         const line = createEmptyLine();
         lines.push(line);
+        markDirty();
         recalcAll();
         renderLines();
       });
@@ -2995,6 +3097,7 @@
         if (lines.length === 0) {
           lines.push(createEmptyLine());
         }
+        markDirty();
         recalcAll();
         renderLines();
       });
@@ -3039,7 +3142,24 @@
       const pmBtnMaximize = document.getElementById("pm-btn-maximize");
       const pmItemsSearchInput = document.getElementById("pm-items-search");
       const pmItemsBtnMaximize = document.getElementById("pm-items-btn-maximize");
+      const pmItemsBtnDelSelected = document.getElementById("pm-items-btn-del-selected");
 
+
+      if (pmItemsBtnDelSelected) {
+        pmItemsBtnDelSelected.addEventListener("click", () => {
+          const selected = pmItems.filter(x => x.selected);
+          if (!selected.length) {
+            showToast("Не выбрано ни одного товара", "error");
+            return;
+          }
+
+          if (!confirm(`Удалить выбранные товары (${selected.length}) из прайс-листа?`)) return;
+
+          pmItems = pmItems.filter(x => !x.selected);
+          pmItemsDirty = true;
+          renderPriceItemsTable();
+        });
+      }
       const pmItemsBtnAdd = document.getElementById("pm-items-btn-add");
       if (pmItemsBtnAdd) {
         pmItemsBtnAdd.addEventListener("click", (e) => {
@@ -3052,6 +3172,7 @@
         pmItemsSearchInput.addEventListener("input", (e) => {
           pmItemsSearchTerm = (e.target.value || "").toLowerCase();
           renderPriceItemsTable();
+          markDirty();
         });
       }
 
@@ -3089,6 +3210,7 @@
         pmSearchInput.addEventListener("input", (e) => {
           pmSearchTerm = e.target.value || "";
           loadPriceListsForManager(pmSelectedId);
+          markDirty();
         });
       }
 
@@ -3174,11 +3296,29 @@
               }
 
               showToast("Сумма и состояние сохранены в сделку #" + CURRENT_DEAL_ID, "success");
+              markSaved();
             });
           }
         );
       });
 
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden && hasUnsavedChanges) {
+          showToast("Есть несохранённые изменения. Если уйдёте — они могут не сохраниться.", "error", true);
+        }
+      });
+
+      window.addEventListener("beforeunload", (e) => {
+        if (!hasUnsavedChanges) return;
+        e.preventDefault();
+        e.returnValue = "";
+      });
+
+      window.addEventListener("blur", () => {
+        if (hasUnsavedChanges) {
+          showToast("Есть несохранённые изменения — не забудьте сохранить.", "error", true);
+        }
+      });
 
 
       const cbSelectAll = document.getElementById("cb-select-all");

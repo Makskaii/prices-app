@@ -5,7 +5,7 @@ from app.models.price_item import PriceListItem
 from app.models.price_list import PriceList
 from app.models.product import Product
 from app.services.price_service import PriceService
-from sqlalchemy import and_
+from sqlalchemy import and_, desc
 
 prices_bp = Blueprint("prices_bp", __name__)
 
@@ -168,6 +168,7 @@ def get_price_list_items(pl_id):
             Product.name.label("product_name"),
             Product.description.label("product_description"),
             PriceListItem.price,
+            PriceListItem.created_at.label("created_at"),
         )
         .outerjoin(
             PriceListItem,
@@ -176,7 +177,8 @@ def get_price_list_items(pl_id):
                 PriceListItem.price_list_id == pl_id,
             ),
         )
-        .order_by(Product.name.asc())
+        # товары, которых нет в прайсе (created_at = NULL), уйдут вниз
+        .order_by(PriceListItem.created_at.desc().nullslast(), Product.name.asc())
         .all()
     )
 
@@ -187,9 +189,11 @@ def get_price_list_items(pl_id):
             "product_name": r.product_name,
             "product_description": r.product_description,
             "price": float(r.price) if r.price is not None else None,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
         })
 
     return jsonify(result)
+
 
 
 @prices_bp.route("/<int:pl_id>/items", methods=["PUT"])
@@ -199,9 +203,9 @@ def bulk_update_price_list_items(pl_id):
         return jsonify({"error": "not found"}), 404
 
     payload = request.get_json() or {}
-    items = payload.get("items", [])
+    items = payload.get("items", []) or []
 
-    
+    # 1) чистим старые связи
     PriceListItem.query.filter_by(price_list_id=pl_id).delete()
 
     new_items = []
@@ -210,17 +214,22 @@ def bulk_update_price_list_items(pl_id):
         if not product_id:
             continue
 
-        try:
-            product_id_int = int(product_id)
-        except (TypeError, ValueError):
+        product_id = str(product_id)
+
+        # (необязательно, но полезно) проверим, что товар существует
+        if not Product.query.get(product_id):
             continue
 
         price = item.get("price", 0)
+        try:
+            price = float(price)
+        except (TypeError, ValueError):
+            price = 0
 
         new_items.append(
             PriceListItem(
                 price_list_id=pl_id,
-                product_id=product_id_int,
+                product_id=product_id,
                 price=price,
             )
         )
@@ -228,15 +237,9 @@ def bulk_update_price_list_items(pl_id):
     if new_items:
         db.session.add_all(new_items)
 
-    
-    pl.items_count = len(new_items)
-
     db.session.commit()
 
-    return jsonify({
-        "status": "ok",
-        "items_count": len(new_items),
-    })
+    return get_price_list_items(pl_id)
 
 
 @prices_bp.route("/sync-product/<int:product_id>", methods=["POST"])
@@ -252,3 +255,13 @@ def sync_product_to_all_price_lists(product_id):
     )
 
     return jsonify({"status": "ok", "product_id": product.id})
+
+@prices_bp.route("/<int:pl_id>/items/<product_id>", methods=["DELETE"])
+def delete_price_item(pl_id, product_id):
+    item = PriceListItem.query.filter_by(price_list_id=pl_id, product_id=str(product_id)).first()
+    if not item:
+        return jsonify({"status": "not_found"}), 404
+
+    db.session.delete(item)
+    db.session.commit()
+    return jsonify({"status": "deleted", "product_id": str(product_id)})
