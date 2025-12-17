@@ -965,6 +965,79 @@
       word-break: break-word;
     }
 
+    .warn-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: 6px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff3cd;
+      border: 1px solid #ffeeba;
+      color: #856404;
+      font-size: 12px;
+      line-height: 1;
+      cursor: help;
+    }
+    .product-row.not-in-price {
+      opacity: 0.6;
+    }
+    .product-row.not-in-price .product-row-name::after {
+      content: " • нет в прайсе";
+      font-size: 11px;
+      color: #ff5b54;
+    }
+
+    .pm-desc-row {
+      position: relative;
+    }
+
+    .pm-default-wrap {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 6px;
+    }
+
+    .pm-btn-default {
+      padding: 4px 8px;
+      font-size: 12px;
+      height: 26px;
+      line-height: 1;
+      border-radius: 4px;
+      opacity: 0.85;
+    }
+
+    .pm-btn-default:hover {
+      opacity: 1;
+    }
+
+    .price-list-form-row.pm-desc-row {
+      position: relative;
+    }
+
+    .price-list-form-row.pm-desc-row .pm-default-wrap{
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 6px;
+    }
+
+    .price-list-form-row.pm-desc-row .pm-btn-default{
+      padding: 4px 8px !important;
+      font-size: 12px !important;
+      height: 26px !important;
+      line-height: 1 !important;
+      border-radius: 4px;
+      width: auto !important;
+      display: inline-flex;
+      align-items: center;
+      opacity: 0.9;
+    }
+
+    .price-list-form-row.pm-desc-row .pm-btn-default:hover{
+      opacity: 1;
+    }
+
   </style>
 </head>
 <body>
@@ -1046,74 +1119,75 @@
 <div class="docs-panel">
   <div class="docs-panel-title">Сформировать документ</div>
     <div class="docs-variants">
-    <!-- 1. ТП: со скидкой + НДС (текущий шаблон) -->
-    <label class="docs-variant">
-      <input type="radio" name="doc-variant" value="kp_tp_discount" checked>
-      <div>
-        <div class="docs-variant-label-main">
-          Техническая поддержка со скидкой и НДС
+      <!-- 1. ТП: со скидкой + НДС (текущий шаблон) -->
+      <label class="docs-variant">
+        <input type="radio" name="doc-variant" value="kp_tp_discount" checked>
+        <div>
+          <div class="docs-variant-label-main">
+            Техническая поддержка со скидкой и НДС
+          </div>
+          <div class="docs-variant-label-sub">
+            Таблица со скидкой и НДС.
+          </div>
         </div>
-        <div class="docs-variant-label-sub">
-          Таблица со скидкой и НДС.
+      </label>
+
+      <!-- 2. ТП: без скидки, с НДС -->
+      <label class="docs-variant">
+        <input type="radio" name="doc-variant" value="kp_tp_basic">
+        <div>
+          <div class="docs-variant-label-main">
+            Техническая поддержка
+          </div>
+          <div class="docs-variant-label-sub">
+            Таблица без скидки.
+          </div>
         </div>
+      </label>
+
+      <!-- 3. ТП: со скидкой, без НДС (+ текст после таблицы) -->
+      <label class="docs-variant">
+        <input type="radio" name="doc-variant" value="kp_tp_no_vat">
+        <div>
+          <div class="docs-variant-label-main">
+            Поставка ПО со скидкой
+          </div>
+          <div class="docs-variant-label-sub">
+            Таблица без НДС.
+          </div>
+        </div>
+      </label>
+
+      <!-- 4. ТП: без скидки, без НДС -->
+      <label class="docs-variant">
+        <input type="radio" name="doc-variant" value="kp_tp_no_vat_nodiscount">
+        <div>
+          <div class="docs-variant-label-main">
+            Поставка ПО
+          </div>
+          <div class="docs-variant-label-sub">
+            Таблица без скидки и без НДС.
+          </div>
+        </div>
+      </label>
+      
+      <div style="display:flex; gap:12px; align-items:center; margin-top:8px;">
+      <label style="display:flex; gap:6px; align-items:center;">
+        <input type="radio" name="doc-format" value="pdf" checked>
+        PDF
+      </label>
+
+      <label style="display:flex; gap:6px; align-items:center;">
+        <input type="radio" name="doc-format" value="docx">
+        DOCX
+      </label>
+
+      <button class="btn btn-primary" id="btn-generate-doc">
+        Скачать
+      </button>
       </div>
-    </label>
-
-    <!-- 2. ТП: без скидки, с НДС -->
-    <label class="docs-variant">
-      <input type="radio" name="doc-variant" value="kp_tp_basic">
-      <div>
-        <div class="docs-variant-label-main">
-          Техническая поддержка
-        </div>
-        <div class="docs-variant-label-sub">
-          Таблица без скидки.
-        </div>
-      </div>
-    </label>
-
-    <!-- 3. ТП: со скидкой, без НДС (+ текст после таблицы) -->
-    <label class="docs-variant">
-      <input type="radio" name="doc-variant" value="kp_tp_no_vat">
-      <div>
-        <div class="docs-variant-label-main">
-          Поставка ПО со скидкой
-        </div>
-        <div class="docs-variant-label-sub">
-          Таблица без НДС.
-        </div>
-      </div>
-    </label>
-
-    <!-- 4. ТП: без скидки, без НДС -->
-    <label class="docs-variant">
-      <input type="radio" name="doc-variant" value="kp_tp_no_vat_nodiscount">
-      <div>
-        <div class="docs-variant-label-main">
-          Поставка ПО
-        </div>
-        <div class="docs-variant-label-sub">
-          Таблица без скидки и без НДС.
-        </div>
-      </div>
-    </label>
-    
-    <div style="display:flex; gap:12px; align-items:center; margin-top:8px;">
-    <label style="display:flex; gap:6px; align-items:center;">
-      <input type="radio" name="doc-format" value="pdf" checked>
-      PDF
-    </label>
-
-    <label style="display:flex; gap:6px; align-items:center;">
-      <input type="radio" name="doc-format" value="docx">
-      DOCX
-    </label>
-
-    <button class="btn btn-primary" id="btn-generate-doc">
-      Скачать
-    </button>
+    </div>
 </div>
-
 
   <div id="product-dropdown" class="product-dropdown">
     <div class="product-dropdown-search">
@@ -1165,14 +1239,25 @@
             <button class="btn btn-danger" id="pm-btn-delete" title="Удалить выбранный прайс-лист">Удалить прайс-лист</button>
           </div>
 
-          <div class="price-list-form-row">
+          <div class="price-list-form-row pm-desc-row">
             <label for="pm-input-name">Название прайса</label>
             <input type="text" id="pm-input-name" placeholder="Например: Базовый прайс">
           </div>
 
-          <div class="price-list-form-row">
+          <div class="price-list-form-row pm-desc-row">
             <label for="pm-input-description">Описание</label>
             <textarea id="pm-input-description" placeholder="Краткое описание прайса"></textarea>
+
+            <div class="pm-default-wrap">
+              <button
+                class="btn btn-light pm-btn-default"
+                id="pm-btn-default"
+                type="button"
+                title="Этот прайс будет выбран по умолчанию"
+              >
+                Сделать по умолчанию
+              </button>
+            </div>
           </div>
 
           <div class="price-list-form-meta" id="pm-meta">
@@ -1248,12 +1333,15 @@
     let CURRENT_DEAL_ID = null;
     let APP_READY = false;
     let hasUnsavedChanges = false;
+    let suppressUnsavedToast = false;
 
 
     const VAT_RATES = [0, 5, 10, 20];
     const apiBase = ""; 
     const DEAL_STATE_FIELD = "UF_CRM_1764667329";
     const LOCAL_STATE_PREFIX = "prices_widget_state_deal_";
+    const DEFAULT_PRICE_LIST_KEY = "prices_widget_default_price_list_id";
+    const PRICE_LIST_PRODUCT_IDS_CACHE = new Map();
 
     let currentProductInput = null;
     let currentProductLine = null;
@@ -1263,17 +1351,39 @@
     let productDropdownMode = "line";
     let pmAddAnchorEl = null;
 
+    function getDefaultPriceListId() {
+      try {
+        return window.localStorage ? window.localStorage.getItem(DEFAULT_PRICE_LIST_KEY) : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function setDefaultPriceListId(id) {
+      try {
+        if (window.localStorage) window.localStorage.setItem(DEFAULT_PRICE_LIST_KEY, String(id));
+      } catch (e) {}
+    }
+
+    function toNumberMoney(v) {
+      if (v == null) return 0;
+      if (typeof v === "number") return isFinite(v) ? v : 0;
+
+      if (typeof v === "string") {
+        const s = v.trim().replace(/\s+/g, "").replace(",", ".");
+        const n = Number(s);
+        return isNaN(n) ? 0 : n;
+      }
+      return 0;
+    }
+
     function formatMoney(value) {
-      let num = Number(value);
-      if (isNaN(num)) num = 0;
+      let num = toNumberMoney(value);
 
       num = num.toFixed(2);
-
       let parts = num.split(".");
-      let intPart = parts[0];
+      let intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ");
       let decPart = parts[1];
-
-      intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 
       return `${intPart},${decPart}`;
     }
@@ -1295,7 +1405,11 @@
         id: Date.now().toString() + Math.random().toString(16).slice(2),
         productId: null,
         productName: "",
-        priceListId: PRICE_LISTS.length ? PRICE_LISTS[0].id : null,
+        priceListId: (() => {
+          const def = getDefaultPriceListId();
+          if (def && PRICE_LISTS.some(pl => String(pl.id) === String(def))) return def;
+          return PRICE_LISTS.length ? PRICE_LISTS[0].id : null;
+        })(),
         price: 0,
         quantity: 1,
         discountPercent: 0,
@@ -1305,6 +1419,8 @@
         vatAmount: 0,
         total: 0,
         selected: false,
+
+        missingInPriceList: false,
       };
     }
 
@@ -1374,6 +1490,7 @@
     function applyAppState(state) {
       if (!state || !Array.isArray(state.lines) || !state.lines.length) {
         lines = [createEmptyLine()];
+        lines[0].missingInPriceList = false;
         recalcAll();
         renderLines();
         markSaved();
@@ -1389,12 +1506,13 @@
         line.quantity = Number(raw.quantity) || 1;
         line.discountPercent = Number(raw.discountPercent) || 0;
         line.vatPercent = Number(raw.vatPercent) || 0;
+        line.missingInPriceList = false;
         recalcLine(line);
         return line;
       });
-      markDirty();
       recalcAll();
       renderLines();
+      markSaved();
     }
 
 
@@ -1455,17 +1573,38 @@
     async function fetchPriceLists() {
       const res = await fetch(apiBase + "/api/prices/");
       if (!res.ok) throw new Error("Ошибка загрузки прайсов");
-      PRICE_LISTS = await res.json() || [];
+      const data = await res.json() || [];
+      PRICE_LISTS = data.map(pl => ({
+        ...pl,
+        id: String(pl.id),
+      }));
     }
 
     async function fetchPriceForLine(line) {
       if (!line.productId || !line.priceListId) return;
-      const url = `${apiBase}/api/prices/${line.priceListId}/price?product_id=${encodeURIComponent(line.productId)}`;
+      const plId = String(line.priceListId);
+      const pid = String(line.productId);
+
+      const set = await ensurePriceListProductIds(plId);
+      if (set && !set.has(pid)) {
+        // строго: товара нет в прайсе => цена 0, без запроса к /price
+        line.price = 0;
+        line.missingInPriceList = true;
+        return;
+      }
+
+      const url = `${apiBase}/api/prices/${encodeURIComponent(plId)}/price?product_id=${encodeURIComponent(pid)}`;
       const res = await fetch(url);
       if (!res.ok) return;
+
       const data = await res.json();
+
       if (data && data.price != null) {
         line.price = Number(data.price) || 0;
+        line.missingInPriceList = false;
+      } else {
+        line.price = 0;
+        line.missingInPriceList = true;
       }
     }
 
@@ -1496,6 +1635,10 @@
 
       productSearchInputEl.value = "";
       renderProductDropdownList("");
+
+      ensurePriceListProductIds(line.priceListId).then(() => {
+        renderProductDropdownList(productSearchInputEl.value || "");
+      });
 
       productDropdownEl.style.display = "block";
       productDropdownEl.classList.add("visible");
@@ -1573,6 +1716,13 @@
         row.appendChild(nameEl);
         row.appendChild(metaEl);
 
+        if (productDropdownMode === "line" && currentProductLine?.priceListId) {
+          const plKey = String(currentProductLine.priceListId);
+          const set = PRICE_LIST_PRODUCT_IDS_CACHE.get(plKey);
+          if (set && !set.has(String(p.id))) {
+            row.classList.add("not-in-price");
+          }
+        }
 
         row.addEventListener("click", async (e) => {
           e.stopPropagation();
@@ -1600,6 +1750,17 @@
             return;
           }
 
+          if (productDropdownMode === "line" && currentProductLine?.priceListId) {
+            const plId = String(currentProductLine.priceListId);
+            const set = PRICE_LIST_PRODUCT_IDS_CACHE.get(plId);
+
+            if (set && !set.has(String(p.id))) {
+              showToast(
+                "Товар отсутствует в выбранном прайс-листе. Цена будет 0 — укажите вручную.",
+                "error"
+              );
+            }
+          }
           // режим выбора товара в строку КП
           if (!currentProductLine || !currentProductInput) return;
 
@@ -1672,18 +1833,44 @@
         const selectPriceList = document.createElement("select");
         PRICE_LISTS.forEach(pl => {
           const opt = document.createElement("option");
-          opt.value = pl.id;
+          opt.value = String(pl.id);
           opt.textContent = pl.name;
-          if (pl.id === line.priceListId) opt.selected = true;
+          if (String(pl.id) === String(line.priceListId)) opt.selected = true;
           selectPriceList.appendChild(opt);
         });
         selectPriceList.addEventListener("change", async () => {
-          line.priceListId = Number(selectPriceList.value) || null;
+          line.priceListId = selectPriceList.value;
+
+          const set = await ensurePriceListProductIds(line.priceListId);
+
           if (line.productId) {
+            const pid = String(line.productId);
+            if (set && !set.has(pid)) {
+              line.price = 0;
+              line.missingInPriceList = true;
+              recalcLine(line);
+              updateSummary();
+              markDirty();
+              renderLines();
+              return;
+            }
+
             await autoUpdatePriceAndRecalc(line);
           }
+
+          markDirty();
         });
+
         tdPriceList.appendChild(selectPriceList);
+
+        if (line.productId && line.missingInPriceList) {
+          const w = document.createElement("span");
+          w.className = "warn-icon";
+          w.textContent = "!";
+          w.title = "Товар отсутствует в выбранном прайс-листе. Укажите цену вручную.";
+          tdPriceList.appendChild(w);
+}
+
         tr.appendChild(tdPriceList);
 
         
@@ -2359,6 +2546,16 @@
       hasUnsavedChanges = false;
     }
 
+    function confirmNoUnsavedToast(message) {
+      suppressUnsavedToast = true;
+      try {
+        return window.confirm(message);
+      } finally {
+        // небольшой таймаут, чтобы blur успел отстрелять во время confirm
+        setTimeout(() => { suppressUnsavedToast = false; }, 0);
+      }
+    }
+
     function showToast(message, type = "success", persistent = false) {
       const container = document.getElementById("toast-container");
       if (!container) return;
@@ -2538,10 +2735,12 @@
         return true;
       }
 
-      return confirm(
-        "У вас есть несохранённые изменения.\n\n" +
-        "Вы уверены, что хотите закрыть окно и потерять изменения?"
-      );
+      if(!confirmNoUnsavedToast){
+        return confirm(
+          "У вас есть несохранённые изменения.\n\n" +
+          "Вы уверены, что хотите закрыть окно и потерять изменения?"
+        );
+      }
     }
 
     function getFilteredPriceLists() {
@@ -2660,13 +2859,23 @@
         if (!res.ok) throw new Error("Ошибка загрузки товаров прайса");
         const data = await res.json() || [];
 
-        pmItems = (data || []).map(x => ({ ...x, selected: false }));
+        console.log("items sample:", data?.[0], Object.keys(data?.[0] || {}));
+
+        pmItems = (data || []).map(x => ({
+          ...x,
+          price: toNumberMoney(pickPrice(x)),
+          selected: false
+        }));
         pmItemsDirty = false;
         renderPriceItemsTable();
       } catch (e) {
         console.error(e);
         showToast("Не удалось загрузить товары прайса", "error");
       }
+    }
+
+    function pickPrice(x) {
+      return x?.price ?? x?.PRICE ?? x?.Price ?? x?.value ?? x?.VALUE ?? x?.price_value ?? x?.PRICE_VALUE;
     }
 
     function renderPriceItemsTable() {
@@ -2738,7 +2947,6 @@
             </td>
             <td>
               <div class="pm-item-title">${name}</div>
-              ${desc ? `<div class="pm-item-desc">${desc}</div>` : ""}
             </td>
             <td style="text-align:center;">
               <button
@@ -2832,7 +3040,7 @@
           const it = pmItems.find(x => String(x.product_id) === pid);
           const title = it?.product_name || "товар";
 
-          if (!confirm(`Удалить "${title}" из прайс-листа?`)) return;
+          if (!confirmNoUnsavedToast(`Удалить "${title}" из прайс-листа?`)) return;
 
           pmItems = pmItems.filter(x => String(x.product_id) !== pid);
           pmItemsDirty = true;
@@ -2841,6 +3049,47 @@
       }); 
     }
 
+    async function ensurePriceListProductIds(plId) {
+      if (!plId) return null;
+      const key = String(plId);
+      if (PRICE_LIST_PRODUCT_IDS_CACHE.has(key)) {
+        return PRICE_LIST_PRODUCT_IDS_CACHE.get(key);
+      }
+
+      try {
+        const res = await fetch(`${apiBase}/api/prices/${encodeURIComponent(key)}/items?ids_only=1`);
+        if (!res.ok) return null;
+
+        const data = await res.json();
+
+        let arr = data;
+        if (data && typeof data === "object" && !Array.isArray(data)) {
+          arr = data.ids || data.items || [];
+        }
+        if (!Array.isArray(arr)) arr = [];
+
+        const ids = arr
+          .map(x => {
+            if (x == null) return null;
+            if (typeof x === "string" || typeof x === "number") return String(x);
+            if (typeof x === "object") {
+              return x.product_id != null ? String(x.product_id)
+                  : x.id != null ? String(x.id)
+                  : x.PRODUCT_ID != null ? String(x.PRODUCT_ID)
+                  : null;
+            }
+            return null;
+          })
+          .filter(Boolean);
+
+        const set = new Set(ids);
+        PRICE_LIST_PRODUCT_IDS_CACHE.set(key, set);
+        return set;
+      } catch (e) {
+        console.warn("ensurePriceListProductIds failed:", e);
+        return null;
+      }
+    }
 
     function pmNewPriceList() {
       pmSelectedId = null;
@@ -2889,12 +3138,17 @@
           if (!res.ok) throw new Error("Ошибка сохранения прайса");
         }
 
-        
+        const payloadItems = pmItems
+          .filter(it => it.product_id) // и/или it.price != null
+          .map(it => ({ product_id: it.product_id, price: toNumberMoney(it.price)
+          }));
+
+
         if (pmItemsDirty && savedId != null) {
           const resItems = await fetch(apiBase + `/api/prices/${savedId}/items`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ items: pmItems })
+            body: JSON.stringify({ items: payloadItems })
           });
           if (!resItems.ok) throw new Error("Ошибка сохранения цен в прайсе");
           pmItemsDirty = false;
@@ -2903,6 +3157,7 @@
         await loadPriceListsForManager(savedId);
         await fetchPriceLists();
         renderLines();
+        PRICE_LIST_PRODUCT_IDS_CACHE.delete(String(savedId));
 
         showToast(wasNew ? "Прайс создан" : "Прайс сохранён");
       } catch (e) {
@@ -2939,10 +3194,12 @@
         return;
       }
 
+      const deletedId = String(pmSelectedId);
       const pl = PRICE_LISTS.find(p => p.id === pmSelectedId);
       const name = pl ? pl.name : pmSelectedId;
+      const def = getDefaultPriceListId();
 
-      if (!confirm(`Удалить прайс "${name}"? Это действие необратимо.`)) {
+      if (!confirmNoUnsavedToast(`Удалить прайс "${name}"? Это действие необратимо.`)) {
         return;
       }
 
@@ -2960,6 +3217,11 @@
         await fetchPriceLists();
         renderLines();
 
+        PRICE_LIST_PRODUCT_IDS_CACHE.delete(deletedId);
+
+        if (def && String(def) === deletedId) {
+          setDefaultPriceListId("");
+        }
         showToast(`Прайс "${name}" удалён`);
       } catch (e) {
         console.error(e);
@@ -3143,7 +3405,19 @@
       const pmItemsSearchInput = document.getElementById("pm-items-search");
       const pmItemsBtnMaximize = document.getElementById("pm-items-btn-maximize");
       const pmItemsBtnDelSelected = document.getElementById("pm-items-btn-del-selected");
+      const pmBtnDefault = document.getElementById("pm-btn-default");
 
+      if (pmBtnDefault) {
+        pmBtnDefault.addEventListener("click", () => {
+          if (!pmSelectedId) {
+            showToast("Сначала выберите прайс-лист", "error");
+            return;
+          }
+          setDefaultPriceListId(pmSelectedId);
+          showToast("Прайс-лист установлен по умолчанию");
+          renderPriceListsSidebar(); // чтобы обновить подсветку/маркер (если добавим)
+        });
+      }
 
       if (pmItemsBtnDelSelected) {
         pmItemsBtnDelSelected.addEventListener("click", () => {
@@ -3153,7 +3427,7 @@
             return;
           }
 
-          if (!confirm(`Удалить выбранные товары (${selected.length}) из прайс-листа?`)) return;
+          if (!confirmNoUnsavedToast(`Удалить выбранные товары (${selected.length}) из прайс-листа?`)) return;
 
           pmItems = pmItems.filter(x => !x.selected);
           pmItemsDirty = true;
@@ -3172,7 +3446,6 @@
         pmItemsSearchInput.addEventListener("input", (e) => {
           pmItemsSearchTerm = (e.target.value || "").toLowerCase();
           renderPriceItemsTable();
-          markDirty();
         });
       }
 
@@ -3210,7 +3483,6 @@
         pmSearchInput.addEventListener("input", (e) => {
           pmSearchTerm = e.target.value || "";
           loadPriceListsForManager(pmSelectedId);
-          markDirty();
         });
       }
 
@@ -3303,6 +3575,7 @@
       });
 
       document.addEventListener("visibilitychange", () => {
+        if (suppressUnsavedToast) return;
         if (document.hidden && hasUnsavedChanges) {
           showToast("Есть несохранённые изменения. Если уйдёте — они могут не сохраниться.", "error", true);
         }
@@ -3315,6 +3588,7 @@
       });
 
       window.addEventListener("blur", () => {
+        if (suppressUnsavedToast) return;
         if (hasUnsavedChanges) {
           showToast("Есть несохранённые изменения — не забудьте сохранить.", "error", true);
         }

@@ -158,6 +158,7 @@ def update_price_item(pl_id, product_id):
 
 @prices_bp.route("/<int:pl_id>/items", methods=["GET"])
 def get_price_list_items(pl_id):
+    ids_only = request.args.get("ids_only")
     pl = PriceList.query.get(pl_id)
     if not pl:
         return jsonify({"error": "not found"}), 404
@@ -170,15 +171,14 @@ def get_price_list_items(pl_id):
             PriceListItem.price,
             PriceListItem.created_at.label("created_at"),
         )
-        .outerjoin(
+        .join(
             PriceListItem,
             and_(
                 PriceListItem.product_id == Product.id,
                 PriceListItem.price_list_id == pl_id,
             ),
         )
-        # товары, которых нет в прайсе (created_at = NULL), уйдут вниз
-        .order_by(PriceListItem.created_at.desc().nullslast(), Product.name.asc())
+        .order_by(PriceListItem.created_at.desc(), Product.name.asc())
         .all()
     )
 
@@ -188,11 +188,12 @@ def get_price_list_items(pl_id):
             "product_id": r.product_id,
             "product_name": r.product_name,
             "product_description": r.product_description,
-            "price": float(r.price) if r.price is not None else None,
+            "price": float(r.price) if r.price is not None else 0.0,
             "created_at": r.created_at.isoformat() if r.created_at else None,
         })
 
     return jsonify(result)
+
 
 
 
