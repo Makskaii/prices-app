@@ -249,18 +249,7 @@ def _extract_user_phone(user: dict | None) -> str | None:
 
 
 def fetch_deal_with_extras(deal_id: int) -> dict:
-    """
-    Возвращает словарь с полями:
-      - deal_company
-      - contact_name
-      - contact_email
-      - manager_name
-      - manager_email
-      - manager_phone
-      - offer_date (строка dd.mm.yyyy)
-      - valid_until (строка dd.mm.yyyy, +90 дней к дате сделки)
-    При любых ошибках Bitrix кидает исключение наружу.
-    """
+   
     if not BITRIX_WEBHOOK:
         raise RuntimeError("BITRIX_WEBHOOK_URL is not set")
 
@@ -268,6 +257,7 @@ def fetch_deal_with_extras(deal_id: int) -> dict:
     deal = bitrix_call("crm.deal.get", {"id": deal_id}, http_method="GET") or {}
 
     result: dict = {
+        "deal_title": (deal.get("TITLE") or "").strip(),
         "deal_company": None,
         "company_id": None,
         "contact_name": None,

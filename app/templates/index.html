@@ -691,7 +691,7 @@
 
     .product-dropdown {
       position: fixed;
-      z-index: 9999;
+      z-index: 20000;
       background: #fff;
       border-radius: 4px;
       border: 1px solid #c5ced8;
@@ -1117,7 +1117,7 @@
   </div>
 
 <div class="docs-panel">
-  <div class="docs-panel-title">Сформировать документ</div>
+  <div class="docs-panel-title">Сформировать документ (в карточку сделки подтягивается только DOCX формат)</div>
     <div class="docs-variants">
       <!-- 1. ТП: со скидкой + НДС (текущий шаблон) -->
       <label class="docs-variant">
@@ -1375,6 +1375,19 @@
         return isNaN(n) ? 0 : n;
       }
       return 0;
+    }
+
+    function getProductBasePrice(p) {
+      // поддержим разные форматы, если API отдаёт по-разному
+      const raw =
+        p?.price ??
+        p?.PRICE ??
+        p?.base_price ??
+        p?.BASE_PRICE ??
+        p?.default_price ??
+        0;
+
+      return toNumberMoney(raw);
     }
 
     function formatMoney(value) {
@@ -1656,8 +1669,8 @@
       if (!productDropdownEl) return;
 
       const rect = anchorEl.getBoundingClientRect();
-      const top = rect.bottom + window.scrollY + 6;
-      const left = rect.left + window.scrollX;
+      const top = rect.bottom + 6;
+      const left = rect.left;
 
       productDropdownEl.style.width = "520px";
       productDropdownEl.style.left = left + "px";
@@ -1682,6 +1695,7 @@
 
         currentProductLine = null;
         currentProductInput = null;
+        pmAddAnchorEl = null;
         }
 
     function renderProductDropdownList(filterText = "") {
@@ -1728,7 +1742,6 @@
           e.stopPropagation();
 
           if (productDropdownMode === "pm_add") {
-            // добавление товара в текущий прайс-лист
             const exists = pmItems.some(it => String(it.product_id) === String(p.id));
             if (exists) {
               showToast("Этот товар уже есть в прайс-листе", "error");
@@ -1736,11 +1749,13 @@
               return;
             }
 
+            const basePrice = getProductBasePrice(p);
+
             pmItems.push({
               product_id: p.id,
               product_name: p.name || "",
               product_description: p.description || "",
-              price: 0,
+              price: basePrice,          // ✅ цена товара по умолчанию
               selected: false
             });
 
@@ -1749,6 +1764,7 @@
             renderPriceItemsTable();
             return;
           }
+
 
           if (productDropdownMode === "line" && currentProductLine?.priceListId) {
             const plId = String(currentProductLine.priceListId);
@@ -3334,17 +3350,18 @@
           setTimeout(() => toast.remove(), 200);
         }
 
-        // 2) Закрываем dropdown как раньше
         if (!productDropdownEl) return;
         if (!productDropdownEl.classList.contains("visible")) return;
 
-        if (
-          !productDropdownEl.contains(e.target) &&
-          e.target !== currentProductInput
-        ) {
+        const clickedOnLineInput = (currentProductInput && e.target === currentProductInput);
+        const clickedOnPmAddBtn = (pmAddAnchorEl && (e.target === pmAddAnchorEl || pmAddAnchorEl.contains(e.target)));
+
+        // закрываем только если клик реально "снаружи", и не по полю/кнопке открытия
+        if (!productDropdownEl.contains(e.target) && !clickedOnLineInput && !clickedOnPmAddBtn) {
           closeProductDropdown();
         }
       });
+
 
       document.getElementById("btn-add-row").addEventListener("click", () => {
         const line = createEmptyLine();
@@ -3436,11 +3453,23 @@
       }
       const pmItemsBtnAdd = document.getElementById("pm-items-btn-add");
       if (pmItemsBtnAdd) {
-        pmItemsBtnAdd.addEventListener("click", (e) => {
+        pmItemsBtnAdd.addEventListener("click", async (e) => {
+          e.preventDefault();
           e.stopPropagation();
-          openPmAddProductDropdown(pmItemsBtnAdd);
+
+          try {
+            // если вдруг товары ещё не подгружены — подгружаем
+            if (!Array.isArray(PRODUCTS) || PRODUCTS.length === 0) {
+              await fetchProducts();
+            }
+            openPmAddProductDropdown(pmItemsBtnAdd);
+          } catch (err) {
+            console.error(err);
+            showToast("Не удалось загрузить список товаров", "error");
+          }
         });
       }
+
 
       if (pmItemsSearchInput) {
         pmItemsSearchInput.addEventListener("input", (e) => {

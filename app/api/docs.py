@@ -7,6 +7,9 @@ from app.docgen import build_pdf_from_template, format_money
 from app.database import db
 from app.models.proposal_counter import ProposalCounter
 from app.docgen_docx import build_docx_for_variant
+from app.services.bitrix_disk_service import save_kp_and_write_link, upload_docx_to_deal_file_field
+
+
 
 
 bp = Blueprint("docs", __name__, url_prefix="/api/docs")
@@ -147,13 +150,9 @@ def generate():
             # Дата КП = дата формирования документа
             context["offer_date"] = today.strftime("%d.%m.%Y")
 
-            # Номер предложения = счётчик по company_id
-            company_id = extra.get("company_id")
-            offer_seq = get_next_offer_number_for_company(company_id)
-            if offer_seq is not None:
-                context["offer_number"] = str(offer_seq)
-            else:
-                context["offer_number"] = str(deal_id_int)
+            deal_title = (extra.get("deal_title") or "").strip()
+            context["offer_number"] = deal_title if deal_title else str(deal_id_int)
+
 
         except Exception:
             current_app.logger.exception("Bitrix error for deal %s", deal_id)
@@ -194,12 +193,54 @@ def generate():
     if out_format == "docx":
         docx_bytes = build_docx_for_variant(variant, context)
 
+        # deal_id приходит из фронта в data
+        try:
+            deal_id_int = int(data.get("deal_id") or 0)
+        except Exception:
+            deal_id_int = 0
+
+        if deal_id_int:
+            # сделаем имя файла чуть приятнее
+            offer_no = (context.get("offer_number") or "").strip()
+            deal_company = (context.get("deal_company") or "").strip()
+
+            # безопасное имя (без / \ : и т.п.)
+            safe_company = "".join(ch if ch.isalnum() or ch in (" ", "_", "-", ".") else "_" for ch in deal_company)[:60].strip()
+            safe_offer = "".join(ch if ch.isalnum() or ch in (" ", "_", "-", ".") else "_" for ch in offer_no)[:40].strip()
+
+            if safe_company and safe_offer:
+                filename = f"КП_{safe_company}_№{safe_offer}_сделка_{deal_id_int}.docx"
+            elif safe_company:
+                filename = f"КП_{safe_company}_сделка_{deal_id_int}.docx"
+            else:
+                filename = f"КП_сделка_{deal_id_int}.docx"
+
+            try:
+                info = save_kp_and_write_link(deal_id=deal_id_int, filename=filename, content=docx_bytes)
+                current_app.logger.info("KP saved to Disk: %s", info)
+            except Exception:
+                current_app.logger.exception("save_kp_and_write_link failed (deal_id=%s)", deal_id_int)
+
+
+            # 3) ВТОРОЙ ВАРИАНТ: загрузить этот же docx в поле типа "Файл" сделки
+            try:
+                upload_docx_to_deal_file_field(
+                    deal_id=deal_id_int,
+                    field_code="UF_CRM_1768830570994",
+                    filename=filename,
+                    content=docx_bytes
+                )
+                current_app.logger.info("KP uploaded to deal file field UF_CRM_1768830570994 (deal_id=%s)", deal_id_int)
+            except Exception:
+                current_app.logger.exception("Failed to upload KP into deal file field UF_CRM_1768830570994 (deal_id=%s)", deal_id_int)
+
         return send_file(
             BytesIO(docx_bytes),
             mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             as_attachment=True,
             download_name="komercheskoe_predlozhenie.docx",
         )
+
 
 
     pdf_bytes = build_pdf_from_template(template_name, context)
