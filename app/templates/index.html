@@ -1038,6 +1038,71 @@
       opacity: 1;
     }
 
+
+    :root { --appH: 100vh; }
+
+    /* body must not become the scroller (Bitrix iframes sometimes intercept it) */
+    html, body {
+      height: 100%;
+    }
+
+    /* Make the main layout vertically bounded and predictable */
+    .app-root{
+      /* important: limit height to viewport and allow inner scrolling areas */
+      height: calc(var(--appH) - 24px);  /* 12px top + 12px bottom padding in body */
+      max-height: calc(var(--appH) - 24px);
+      overflow: hidden;                 /* prevent table from flowing under other UI */
+    }
+
+    /* Left column becomes a vertical layout:
+      toolbar -> table (scroll) -> footer */
+    .left-block{
+      display: flex;
+      flex-direction: column;
+      min-height: 0;     /* critical for flex children scrolling */
+    }
+
+    /* Keep toolbars/footers from shrinking weirdly */
+    .toolbar-top,
+    .footer-buttons{
+      flex: 0 0 auto;
+    }
+
+    /* This wrapper becomes the ONLY scroller for the main product lines */
+    .products-table-wrapper.products-table-scroll{
+      flex: 1 1 auto;
+      min-height: 0;       /* critical */
+      overflow: auto;      /* ✅ scroll always here */
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+
+      /* safety: if something still goes wrong, force a max-height */
+      max-height: 100%;
+    }
+
+    /* Sticky header (works in modern browsers; safe fallback if not supported) */
+    .products-table-wrapper.products-table-scroll thead th{
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f4f7fb;
+    }
+
+    /* Prevent last row being hidden under footer shadow etc. */
+    .products-table-wrapper.products-table-scroll table{
+      margin-bottom: 12px;
+    }
+
+    /* Keep right block from stretching the whole grid */
+    .right-block{
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .summary-card{
+      flex: 0 0 auto;
+    }
+
   </style>
 </head>
 <body>
@@ -1057,7 +1122,7 @@
         </div>
       </div>
 
-      <div class="products-table-wrapper">
+      <div class="products-table-wrapper products-table-scroll">
         <table>
           <thead>
             <tr>
@@ -1326,2317 +1391,1538 @@
   <div id="toast-container"></div>
 
   <script>
-    
-    let PRODUCTS = [];
-    let PRICE_LISTS = [];
-    let lines = [];
-    let CURRENT_DEAL_ID = null;
-    let APP_READY = false;
-    let hasUnsavedChanges = false;
-    let suppressUnsavedToast = false;
+    /**
+     * Prices Widget — FIXED for Bitrix24:
+     * - Deals: crm.deal.get / crm.deal.update (entityTypeId=2)
+     * - Quotes (Classic quote entityTypeId=7): crm.item.get / crm.item.update (camelCase fields)
+     *
+     * ✅ Quote fields (camelCase):
+     *   - opportunity
+     *   - currencyId
+     *   - ufCrm_QUOTE_1769692749969   (state)
+     *   - ufCrm_QUOTE_1769693197444   (default price list)
+     *
+     * Logging:
+     * - console
+     * - localStorage ring buffer
+     * - optional backend log endpoint: POST /api/logs (if you implement it)
+     */
+
+     (function ensureBx24Sdk(){
+        if (window.BX24) return;
+
+        // пробуем подгрузить SDK Bitrix24 (иногда работает даже вне placement)
+        const s = document.createElement("script");
+        s.src = "https://api.bitrix24.com/api/v1/";
+        s.async = true;
+        s.onload = () => {
+          console.log("BX24 SDK loaded");
+          try { logEvent("BX24 SDK loaded"); } catch(e) {}
+        };
+        s.onerror = () => {
+          console.warn("BX24 SDK failed to load");
+        };
+        document.head.appendChild(s);
+      })();
+
+    (function () {
+      // -------------------- GLOBALS --------------------
+      let PRODUCTS = [];
+      let PRICE_LISTS = [];
+      let lines = [];
+      let APP_READY = false;
+      let hasUnsavedChanges = false;
+      let suppressUnsavedToast = false;
 
 
-    const VAT_RATES = [0, 5, 10, 20];
-    const apiBase = ""; 
-    const DEAL_STATE_FIELD = "UF_CRM_1764667329";
-    const LOCAL_STATE_PREFIX = "prices_widget_state_deal_";
-    const DEFAULT_PRICE_LIST_KEY = "prices_widget_default_price_list_id";
-    const PRICE_LIST_PRODUCT_IDS_CACHE = new Map();
+      const VAT_RATES = [0, 5, 10, 20];
 
-    let currentProductInput = null;
-    let currentProductLine = null;
-    let productDropdownEl = null;
-    let productDropdownListEl = null;
-    let productSearchInputEl = null;
-    let productDropdownMode = "line";
-    let pmAddAnchorEl = null;
+      // If your frontend is on same domain as backend, keep "".
+      // Otherwise set "https://your-backend-domain"
+      const apiBase = "";
 
-    function getDefaultPriceListId() {
-      try {
-        return window.localStorage ? window.localStorage.getItem(DEFAULT_PRICE_LIST_KEY) : null;
-      } catch (e) {
-        return null;
-      }
-    }
+      // Local keys
+      const DEFAULT_PRICE_LIST_KEY = "prices_widget_default_price_list_id";
+      const PRICE_LIST_PRODUCT_IDS_CACHE = new Map();
 
-    function setDefaultPriceListId(id) {
-      try {
-        if (window.localStorage) window.localStorage.setItem(DEFAULT_PRICE_LIST_KEY, String(id));
-      } catch (e) {}
-    }
+      // DEAL custom field where we store widget JSON state
+      const DEAL_STATE_FIELD = "UF_CRM_1764667329";
 
-    function toNumberMoney(v) {
-      if (v == null) return 0;
-      if (typeof v === "number") return isFinite(v) ? v : 0;
+      // QUOTE custom field where we store widget JSON state (camelCase key!)
+      const QUOTE_STATE_FIELD = "ufCrm_QUOTE_1769692749969";
 
-      if (typeof v === "string") {
-        const s = v.trim().replace(/\s+/g, "").replace(",", ".");
-        const n = Number(s);
-        return isNaN(n) ? 0 : n;
-      }
-      return 0;
-    }
+      // Quote default price list field (camelCase key!)
+      const QUOTE_DEFAULT_PRICE_LIST_FIELD = "ufCrm_QUOTE_1769693197444";
 
-    function getProductBasePrice(p) {
-      // поддержим разные форматы, если API отдаёт по-разному
-      const raw =
-        p?.price ??
-        p?.PRICE ??
-        p?.base_price ??
-        p?.BASE_PRICE ??
-        p?.default_price ??
-        0;
+      // Quote money/currency keys (camelCase)
+      const QUOTE_CURRENCY_FIELD = "currencyId";
+      const QUOTE_OPPORTUNITY_FIELD = "opportunity";
 
-      return toNumberMoney(raw);
-    }
+      // Deal money/currency keys (Bitrix classic deal update fields)
+      const DEAL_OPPORTUNITY_FIELD = "OPPORTUNITY";
 
-    function formatMoney(value) {
-      let num = toNumberMoney(value);
-
-      num = num.toFixed(2);
-      let parts = num.split(".");
-      let intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-      let decPart = parts[1];
-
-      return `${intPart},${decPart}`;
-    }
-
-    function showError(message) {
-      const banner = document.getElementById("error-banner");
-      banner.textContent = message;
-      banner.style.display = "block";
-    }
-
-    function clearError() {
-      const banner = document.getElementById("error-banner");
-      banner.textContent = "";
-      banner.style.display = "none";
-    }
-
-    function createEmptyLine() {
-      return {
-        id: Date.now().toString() + Math.random().toString(16).slice(2),
-        productId: null,
-        productName: "",
-        priceListId: (() => {
-          const def = getDefaultPriceListId();
-          if (def && PRICE_LISTS.some(pl => String(pl.id) === String(def))) return def;
-          return PRICE_LISTS.length ? PRICE_LISTS[0].id : null;
-        })(),
-        price: 0,
-        quantity: 1,
-        discountPercent: 0,
-        vatPercent: 0,
-        base: 0,
-        discountAmount: 0,
-        vatAmount: 0,
-        total: 0,
-        selected: false,
-
-        missingInPriceList: false,
+      // Context
+      const CURRENT_CONTEXT = {
+        mode: null,   // "DEAL" | "QUOTE"
+        id: null,
+        entityTypeId: null
       };
-    }
 
-    function recalcLine(line) {
-      const price = Number(line.price) || 0;
-      const qty = Number(line.quantity) || 0;
-      const discountPercent = Number(line.discountPercent) || 0;
-      const vatPercent = Number(line.vatPercent) || 0;
-
-      const base = price * qty;
-      const discountAmount = base * (discountPercent / 100);
-      const baseAfterDiscount = base - discountAmount;
-      const vatAmount = baseAfterDiscount * (vatPercent / 100);
-      const total = baseAfterDiscount + vatAmount;
-
-      line.base = base;
-      line.discountAmount = discountAmount;
-      line.vatAmount = vatAmount;
-      line.total = total;
-    }
-
-    function recalcAll() {
-      lines.forEach(recalcLine);
-      updateSummary();
-    }
-
-    function updateSummary() {
-      let sumBase = 0;
-      let sumDiscount = 0;
-      let sumNoVat = 0;
-      let sumVat = 0;
-      let sumTotal = 0;
-
-      lines.forEach(l => {
-        sumBase += l.base;
-        sumDiscount += l.discountAmount;
-        const noVat = l.base - l.discountAmount;
-        sumNoVat += noVat;
-        sumVat += l.vatAmount;
-        sumTotal += l.total;
-      });
-
-      document.getElementById("sum-base").textContent = formatMoney(sumBase);
-      document.getElementById("sum-discount").textContent = formatMoney(sumDiscount);
-      document.getElementById("sum-no-vat").textContent = formatMoney(sumNoVat);
-      document.getElementById("sum-vat").textContent = formatMoney(sumVat);
-      document.getElementById("sum-total").textContent = formatMoney(sumTotal);
-    }
-
-    // -------- Состояние приложения (для сохранения в сделку) --------
-
-    function getAppStateForSave() {
-      
-      const cleanLines = lines.map(l => ({
-        productId: l.productId,
-        productName: l.productName,
-        priceListId: l.priceListId,
-        price: l.price,
-        quantity: l.quantity,
-        discountPercent: l.discountPercent,
-        vatPercent: l.vatPercent
-      }));
-
-      return { lines: cleanLines };
-    }
-
-    function applyAppState(state) {
-      if (!state || !Array.isArray(state.lines) || !state.lines.length) {
-        lines = [createEmptyLine()];
-        lines[0].missingInPriceList = false;
-        recalcAll();
-        renderLines();
-        markSaved();
-        return;
-      }
-
-      lines = state.lines.map(raw => {
-        const line = createEmptyLine();
-        line.productId = raw.productId || null;
-        line.productName = raw.productName || "";
-        line.priceListId = raw.priceListId || (PRICE_LISTS.length ? PRICE_LISTS[0].id : null);
-        line.price = Number(raw.price) || 0;
-        line.quantity = Number(raw.quantity) || 1;
-        line.discountPercent = Number(raw.discountPercent) || 0;
-        line.vatPercent = Number(raw.vatPercent) || 0;
-        line.missingInPriceList = false;
-        recalcLine(line);
-        return line;
-      });
-      recalcAll();
-      renderLines();
-      markSaved();
-    }
-
-
-    async function fetchProducts() {
-      const res = await fetch(apiBase + "/api/products/");
-      if (!res.ok) throw new Error("Ошибка загрузки товаров");
-      const data = await res.json() || [];
-
-      const map = new Map();
-      for (const p of data) {
-        if (!p.id) continue;
-        if (!map.has(p.id)) map.set(p.id, p);
-      }
-      PRODUCTS = Array.from(map.values()).sort((a, b) =>
-        (a.name || "").localeCompare(b.name || "", "ru", { sensitivity: "base" })
-      );
-    }
-
-    async function syncProductsFromBitrix() {
-      const btn = document.getElementById("btn-sync-products");
-
-      try {
-        clearError();
-        if (btn) btn.disabled = true;
-
-        const res = await fetch(apiBase + "/api/products/sync", {
-          method: "POST",
-        });
-
-        if (!res.ok) {
-          throw new Error("Ошибка синхронизации товаров");
-        }
-
-        const data = await res.json();
-
-        await fetchProducts();
-
-        const createdCount =
-          (data && data.new) ||
-          (data && data.created && data.created.length) ||
-          0;
-        const deletedCount = (data && data.deleted) || 0;
-
-        if (typeof showToast === "function") {
-          showToast(
-            `Синхронизация завершена. Новых: ${createdCount}, удалено: ${deletedCount}.`,
-            "success"
-          );
-        }
-      } catch (e) {
-        console.error(e);
-        showError(e.message || "Не удалось синхронизировать товары");
-      } finally {
-        if (btn) btn.disabled = false;
-      }
-    }
-
-    async function fetchPriceLists() {
-      const res = await fetch(apiBase + "/api/prices/");
-      if (!res.ok) throw new Error("Ошибка загрузки прайсов");
-      const data = await res.json() || [];
-      PRICE_LISTS = data.map(pl => ({
-        ...pl,
-        id: String(pl.id),
-      }));
-    }
-
-    async function fetchPriceForLine(line) {
-      if (!line.productId || !line.priceListId) return;
-      const plId = String(line.priceListId);
-      const pid = String(line.productId);
-
-      const set = await ensurePriceListProductIds(plId);
-      if (set && !set.has(pid)) {
-        // строго: товара нет в прайсе => цена 0, без запроса к /price
-        line.price = 0;
-        line.missingInPriceList = true;
-        return;
-      }
-
-      const url = `${apiBase}/api/prices/${encodeURIComponent(plId)}/price?product_id=${encodeURIComponent(pid)}`;
-      const res = await fetch(url);
-      if (!res.ok) return;
-
-      const data = await res.json();
-
-      if (data && data.price != null) {
-        line.price = Number(data.price) || 0;
-        line.missingInPriceList = false;
-      } else {
-        line.price = 0;
-        line.missingInPriceList = true;
-      }
-    }
-
-    async function autoUpdatePriceAndRecalc(line) {
-      await fetchPriceForLine(line);
-      recalcLine(line);
-      updateSummary();
-      renderLines();
-    }
-
-    function openProductDropdown(inputEl, line) {
-      // режим выбора товара в строку таблицы КП
-      productDropdownMode = "line";
-      currentProductInput = inputEl;
-      currentProductLine = line;
-      pmAddAnchorEl = null;
-
-      if (!productDropdownEl) return;
-
-      const rect = inputEl.getBoundingClientRect();
-      const top = rect.bottom + window.scrollY;
-      const left = rect.left + window.scrollX;
-
-      const extraWidth = 40;
-      productDropdownEl.style.width = (rect.width + extraWidth) + "px";
-      productDropdownEl.style.left = left + "px";
-      productDropdownEl.style.top = top + "px";
-
-      productSearchInputEl.value = "";
-      renderProductDropdownList("");
-
-      ensurePriceListProductIds(line.priceListId).then(() => {
-        renderProductDropdownList(productSearchInputEl.value || "");
-      });
-
-      productDropdownEl.style.display = "block";
-      productDropdownEl.classList.add("visible");
-
-      setTimeout(() => productSearchInputEl.focus(), 10);
-    }
-
-    function openPmAddProductDropdown(anchorEl) {
-      productDropdownMode = "pm_add";
-      pmAddAnchorEl = anchorEl;
-
-      currentProductLine = null;
-      currentProductInput = null;
-
-      if (!productDropdownEl) return;
-
-      const rect = anchorEl.getBoundingClientRect();
-      const top = rect.bottom + 6;
-      const left = rect.left;
-
-      productDropdownEl.style.width = "520px";
-      productDropdownEl.style.left = left + "px";
-      productDropdownEl.style.top = top + "px";
-
-      productSearchInputEl.value = "";
-      renderProductDropdownList("");
-
-      productDropdownEl.style.display = "block";
-      productDropdownEl.classList.add("visible");
-
-      setTimeout(() => productSearchInputEl.focus(), 10);
-    }
-
-
-
-    function closeProductDropdown() {
-      if (!productDropdownEl) return;
-
-        productDropdownEl.classList.remove("visible");
-        productDropdownEl.style.display = "none";
-
-        currentProductLine = null;
-        currentProductInput = null;
-        pmAddAnchorEl = null;
-        }
-
-    function renderProductDropdownList(filterText = "") {
-      if (!productDropdownListEl) return;
-      productDropdownListEl.innerHTML = "";
-
-      const q = filterText.toLowerCase().trim();
-
-      const filtered = PRODUCTS.filter(p => {
-        if (!q) return true;
-        const name = (p.name || "").toLowerCase();
-        const desc = (p.description || "").toLowerCase();
-        return name.includes(q) || desc.includes(q);
-      });
-
-      filtered.forEach(p => {
-        const row = document.createElement("div");
-        row.className = "product-row";
-
-        const nameEl = document.createElement("div");
-        nameEl.className = "product-row-name";
-        nameEl.textContent = p.name || "(без названия)";
-
-        const metaEl = document.createElement("div");
-        metaEl.className = "product-row-meta";
-        const price = Number(p.price) || 0;
-        const currency = p.currency_id || "RUB";
-        const priceText = price ? `${formatMoney(price)} ${currency}` : "цена не указана";
-        const desc = (p.description || "").replace(/\s+/g, " ");
-        metaEl.textContent = desc ? `${priceText} • ${desc}` : priceText;
-
-        row.appendChild(nameEl);
-        row.appendChild(metaEl);
-
-        if (productDropdownMode === "line" && currentProductLine?.priceListId) {
-          const plKey = String(currentProductLine.priceListId);
-          const set = PRICE_LIST_PRODUCT_IDS_CACHE.get(plKey);
-          if (set && !set.has(String(p.id))) {
-            row.classList.add("not-in-price");
-          }
-        }
-
-        row.addEventListener("click", async (e) => {
-          e.stopPropagation();
-
-          if (productDropdownMode === "pm_add") {
-            const exists = pmItems.some(it => String(it.product_id) === String(p.id));
-            if (exists) {
-              showToast("Этот товар уже есть в прайс-листе", "error");
-              closeProductDropdown();
-              return;
-            }
-
-            const basePrice = getProductBasePrice(p);
-
-            pmItems.push({
-              product_id: p.id,
-              product_name: p.name || "",
-              product_description: p.description || "",
-              price: basePrice,          // ✅ цена товара по умолчанию
-              selected: false
-            });
-
-            pmItemsDirty = true;
-            closeProductDropdown();
-            renderPriceItemsTable();
-            return;
-          }
-
-
-          if (productDropdownMode === "line" && currentProductLine?.priceListId) {
-            const plId = String(currentProductLine.priceListId);
-            const set = PRICE_LIST_PRODUCT_IDS_CACHE.get(plId);
-
-            if (set && !set.has(String(p.id))) {
-              showToast(
-                "Товар отсутствует в выбранном прайс-листе. Цена будет 0 — укажите вручную.",
-                "error"
-              );
-            }
-          }
-          // режим выбора товара в строку КП
-          if (!currentProductLine || !currentProductInput) return;
-
-          currentProductLine.productId = p.id;
-          currentProductLine.productName = p.name || "";
-          currentProductInput.value = p.name || "";
-
-          const lineRef = currentProductLine;
-          closeProductDropdown();
-          await autoUpdatePriceAndRecalc(lineRef);
-        });
-        productDropdownListEl.appendChild(row);
-      });
-    }
-
-    function renderLines() {
-      const tbody = document.getElementById("lines-tbody");
-      tbody.innerHTML = "";
-
-      lines.forEach((line, index) => {
-        const tr = document.createElement("tr");
-        if (line.selected) tr.classList.add("selected");
-
-        
-        const tdIndex = document.createElement("td");
-        tdIndex.className = "col-index";
-        tdIndex.textContent = index + 1;
-        tr.appendChild(tdIndex);
-
-        
-        const tdCheckbox = document.createElement("td");
-        tdCheckbox.className = "col-checkbox";
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.checked = line.selected;
-        cb.addEventListener("change", () => {
-          line.selected = cb.checked;
-          renderLines();
-        });
-        tdCheckbox.appendChild(cb);
-        tr.appendChild(tdCheckbox);
-
-        const tdProduct = document.createElement("td");
-        tdProduct.className = "col-product";
-        const inputProduct = document.createElement("input");
-        inputProduct.type = "text";
-        inputProduct.placeholder = "— выбрать товар —";
-        inputProduct.value = line.productName || "";
-
-        inputProduct.addEventListener("focus", () => {
-          openProductDropdown(inputProduct, line);
-        });
-        inputProduct.addEventListener("click", (e) => {
-          e.stopPropagation();
-          openProductDropdown(inputProduct, line);
-        });
-
-        
-        inputProduct.addEventListener("input", () => {
-          line.productName = inputProduct.value;
-          markDirty();
-        });
-
-        tdProduct.appendChild(inputProduct);
-        tr.appendChild(tdProduct);
-
-        
-        const tdPriceList = document.createElement("td");
-        tdPriceList.className = "col-price-list";
-        const selectPriceList = document.createElement("select");
-        PRICE_LISTS.forEach(pl => {
-          const opt = document.createElement("option");
-          opt.value = String(pl.id);
-          opt.textContent = pl.name;
-          if (String(pl.id) === String(line.priceListId)) opt.selected = true;
-          selectPriceList.appendChild(opt);
-        });
-        selectPriceList.addEventListener("change", async () => {
-          line.priceListId = selectPriceList.value;
-
-          const set = await ensurePriceListProductIds(line.priceListId);
-
-          if (line.productId) {
-            const pid = String(line.productId);
-            if (set && !set.has(pid)) {
-              line.price = 0;
-              line.missingInPriceList = true;
-              recalcLine(line);
-              updateSummary();
-              markDirty();
-              renderLines();
-              return;
-            }
-
-            await autoUpdatePriceAndRecalc(line);
-          }
-
-          markDirty();
-        });
-
-        tdPriceList.appendChild(selectPriceList);
-
-        if (line.productId && line.missingInPriceList) {
-          const w = document.createElement("span");
-          w.className = "warn-icon";
-          w.textContent = "!";
-          w.title = "Товар отсутствует в выбранном прайс-листе. Укажите цену вручную.";
-          tdPriceList.appendChild(w);
-}
-
-        tr.appendChild(tdPriceList);
-
-        
-        const tdPrice = document.createElement("td");
-        tdPrice.className = "col-price";
-        const inputPrice = document.createElement("input");
-        inputPrice.type = "text";
-
-        inputPrice.step = "1";
-        inputPrice.value = formatMoney(line.price || 0);
-
-        inputPrice.addEventListener("focus", () => {
-          const num = Number(line.price) || 0;
-         
-          inputPrice.value = num.toString().replace(".", ",");
-        });
-
-        inputPrice.addEventListener("blur", () => {
-          let raw = inputPrice.value || "";
-
-          raw = raw.replace(/\s+/g, "").replace(",", ".");
-
-          let num = Number(raw);
-          if (isNaN(num)) num = 0;
-
-          line.price = num;
-          recalcLine(line);
-          updateSummary();
-          markDirty();
-
-          inputPrice.value = formatMoney(line.price);
-          tdTotal.textContent = formatMoney(line.total);
-        });
-
-        tdPrice.appendChild(inputPrice);
-        tr.appendChild(tdPrice);
-
-        
-        const tdQty = document.createElement("td");
-        tdQty.className = "col-qty";
-        const qtyWrapper = document.createElement("div");
-        qtyWrapper.className = "input-qty-wrapper";
-        const inputQty = document.createElement("input");
-        inputQty.type = "number";
-        inputQty.min = "0";
-        inputQty.step = "1";
-        inputQty.value = line.quantity;
-        inputQty.addEventListener("input", () => {
-          line.quantity = Number(inputQty.value) || 0;
-          recalcLine(line);
-          updateSummary();
-          markDirty();
-          tdTotal.textContent = formatMoney(line.total);
-        });
-        const unitSpan = document.createElement("span");
-        unitSpan.className = "unit-label";
-        unitSpan.textContent = "шт";
-        qtyWrapper.appendChild(inputQty);
-        qtyWrapper.appendChild(unitSpan);
-        tdQty.appendChild(qtyWrapper);
-        tr.appendChild(tdQty);
-
-        
-        const tdDiscount = document.createElement("td");
-        tdDiscount.className = "col-discount";
-        const inputDiscount = document.createElement("input");
-        inputDiscount.type = "number";
-        inputDiscount.min = "0";
-        inputDiscount.max = "100";
-        inputDiscount.step = "1";
-        inputDiscount.value = line.discountPercent;
-        inputDiscount.addEventListener("input", () => {
-          line.discountPercent = Number(inputDiscount.value) || 0;
-          recalcLine(line);
-          updateSummary();
-          markDirty();
-          tdTotal.textContent = formatMoney(line.total);
-        });
-        tdDiscount.appendChild(inputDiscount);
-        tr.appendChild(tdDiscount);
-
-        
-        const tdVat = document.createElement("td");
-        tdVat.className = "col-vat";
-        const selectVat = document.createElement("select");
-        VAT_RATES.forEach(rate => {
-          const opt = document.createElement("option");
-          opt.value = rate;
-          opt.textContent = rate === 0 ? "0 %" : rate + " %";
-          if (rate === line.vatPercent) opt.selected = true;
-          selectVat.appendChild(opt);
-        });
-        selectVat.addEventListener("change", () => {
-          line.vatPercent = Number(selectVat.value) || 0;
-          recalcLine(line);
-          updateSummary();
-          markDirty();
-          tdTotal.textContent = formatMoney(line.total);
-        });
-        tdVat.appendChild(selectVat);
-        tr.appendChild(tdVat);
-
-        
-        const tdTotal = document.createElement("td");
-        tdTotal.className = "col-total";
-        tdTotal.textContent = formatMoney(line.total);
-        tr.appendChild(tdTotal);
-
-        tbody.appendChild(tr);
-      });
-
-      const anySelected = lines.some(l => l.selected);
-      document.getElementById("btn-delete-selected").disabled = !anySelected;
-    }
-
-    function loadDealState() {
-  
-      if (CURRENT_DEAL_ID) {
+      // localStorage prefixes per entity
+      const LOCAL_STATE_PREFIX_DEAL = "prices_widget_state_deal_";
+      const LOCAL_STATE_PREFIX_QUOTE = "prices_widget_state_quote_";
+
+      let LAST_REMOTE_STATE_RAW = null;
+      let REMOTE_STATE_LOADED = false;
+
+      // for compatibility in docs generation
+      let CURRENT_DEAL_ID = null;
+
+      // Dropdown
+      let currentProductInput = null;
+      let currentProductLine = null;
+      let productDropdownEl = null;
+      let productDropdownListEl = null;
+      let productSearchInputEl = null;
+      let productDropdownMode = "line";
+      let pmAddAnchorEl = null;
+
+      // -------------------- LOGGING --------------------
+      const LOG_KEY = "prices_widget_debug_log_v2";
+      const LOG_MAX = 800;
+
+      function errToText(err) {
         try {
-          const localKey = LOCAL_STATE_PREFIX + CURRENT_DEAL_ID;
-          const localRaw = window.localStorage && window.localStorage.getItem(localKey);
-          if (localRaw) {
-            const localState = JSON.parse(localRaw);
-            applyAppState(localState);
-            
-          }
+          if (!err) return "unknown error";
+          if (typeof err === "string") return err;
+          if (err.error_description) return err.error_description;
+          if (err.error) return err.error;
+          if (err.message) return err.message;
+          return JSON.stringify(err);
         } catch (e) {
-          console.warn("Ошибка чтения состояния из localStorage:", e);
+          return String(err);
         }
       }
 
-      if (!window.BX24 || !CURRENT_DEAL_ID) return;
-
-      BX24.callMethod("crm.deal.get", { id: CURRENT_DEAL_ID }, function(res) {
-        if (res.error()) {
-          console.error("crm.deal.get error:", res.error());
-          return;
-        }
-        const deal = res.data() || {};
-        const rawState = deal[DEAL_STATE_FIELD];
-
-        if (!rawState) {
-          
-          return;
-        }
-
+      function safeJsonStringify(obj) {
         try {
-          const state = JSON.parse(rawState);
-          applyAppState(state);
+          return JSON.stringify(obj);
         } catch (e) {
-          console.error("Ошибка парсинга состояния сделки:", e);
-        }
-      });
-    }
-      
-      function initBitrixContext() {
-        if (!window.BX24) {
-          console.warn("BX24 не доступен – работаем в локальном режиме.");
-          return;
-        }
-
-        BX24.ready(function() {
-          BX24.init(function() {
-            
-            try {
-              if (BX24.placement && BX24.placement.info) {
-                const info = BX24.placement.info();
-                console.log("BX24.placement.info():", info);
-
-                if (info && info.options) {
-                  let opts = info.options;
-                  try {
-                    if (typeof opts === "string") {
-                      opts = JSON.parse(opts);
-                    }
-                  } catch (e) {
-                    console.warn("Ошибка парсинга info.options:", e, info.options);
-                    opts = {};
-                  }
-
-                  let dealId =
-                    opts.DEAL_ID ||
-                    opts.Id ||
-                    opts.ID ||
-                    opts.ENTITY_ID ||
-                    opts.entityId ||
-                    opts.dealId;
-
-                  if (dealId) {
-                    const digits = String(dealId).match(/\d+/);
-                    CURRENT_DEAL_ID = digits ? digits[0] : String(dealId);
-                    console.log("ID сделки из placement.info():", CURRENT_DEAL_ID);
-                  }
-                }
-              }
-            } catch (e) {
-              console.warn("Ошибка обработки BX24.placement.info():", e);
-            }
-
-            
-            BX24.callMethod("placement.getData", {}, function(res) {
-              if (res.error()) {
-                console.error("placement.getData error:", res.error());
-              } else {
-                const raw = res.data ? res.data() : res.data || {};
-                console.log("placement.getData raw:", raw);
-
-                if (!CURRENT_DEAL_ID) {
-                  let dealId =
-                    raw.ID ||
-                    raw.DEAL_ID ||
-                    raw.ENTITY_ID ||
-                    raw.entityId ||
-                    raw.dealId;
-
-                  if (!dealId && raw.PLACEMENT_OPTIONS) {
-                    let opts = raw.PLACEMENT_OPTIONS;
-                    try {
-                      if (typeof opts === "string") {
-                        opts = JSON.parse(opts);
-                      }
-                    } catch (e) {
-                      console.warn("Ошибка парсинга PLACEMENT_OPTIONS:", e, raw.PLACEMENT_OPTIONS);
-                      opts = {};
-                    }
-
-                    if (opts) {
-                      dealId =
-                        opts.DEAL_ID ||
-                        opts.Id ||
-                        opts.ID ||
-                        opts.ENTITY_ID ||
-                        opts.entityId ||
-                        opts.dealId;
-                    }
-                    console.log("PLACEMENT_OPTIONS parsed:", opts, "dealId:", dealId);
-                  }
-
-                  if (!dealId && raw.options) {
-                    let opts = raw.options;
-                    try {
-                      if (typeof opts === "string") {
-                        opts = JSON.parse(opts);
-                      }
-                    } catch (e) {
-                      console.warn("Ошибка парсинга options:", e, raw.options);
-                      opts = {};
-                    }
-
-                    if (opts) {
-                      dealId =
-                        opts.DEAL_ID ||
-                        opts.Id ||
-                        opts.ID ||
-                        opts.ENTITY_ID ||
-                        opts.entityId ||
-                        opts.dealId;
-                    }
-                    console.log("options parsed:", opts, "dealId:", dealId);
-                  }
-
-                  if (!dealId && window.location && window.location.search) {
-                    const m = window.location.search.match(/[?&](deal_id|DEAL_ID|ID)=(\d+)/i);
-                    if (m) {
-                      dealId = m[2];
-                      console.log("dealId from URL:", dealId);
-                    }
-                  }
-
-                  if (dealId) {
-                    const digits = String(dealId).match(/\d+/);
-                    CURRENT_DEAL_ID = digits ? digits[0] : String(dealId);
-                    console.log("Определён ID сделки (placement.getData):", CURRENT_DEAL_ID);
-                  }
-                }
-              }
-
-              const tagEl = document.getElementById("tag-deal-info");
-
-              
-              if (!CURRENT_DEAL_ID) {
-                console.warn("Не удалось автоматически определить ID сделки.");
-                const manual = window.prompt(
-                  "Не удалось автоматически определить ID сделки.\n" +
-                  "Введите ID сделки вручную (число, как в URL сделки):"
-                );
-                if (manual) {
-                  const digits = String(manual).match(/\d+/);
-                  CURRENT_DEAL_ID = digits ? digits[0] : String(manual);
-                  console.log("ID сделки, введённый вручную:", CURRENT_DEAL_ID);
-                }
-              }
-
-              if (CURRENT_DEAL_ID) {
-                if (tagEl) tagEl.textContent = "Сделка: " + CURRENT_DEAL_ID;
-                if (APP_READY) {
-                  loadDealState();
-                }
-              } else {
-                if (tagEl) tagEl.textContent = "Сделка: не определена";
-                console.warn("CURRENT_DEAL_ID окончательно не определён.");
-              }
-            });
-          });
-        });
-      }
-
-    async function initApp() {
-      clearError();
-      try {
-        await Promise.all([fetchProducts(), fetchPriceLists()]);
-
-        if (lines.length === 0) {
-          lines.push(createEmptyLine());
-          recalcAll();
-        } else {
-          recalcAll();
-        }
-        renderLines();
-      } catch (e) {
-        console.error(e);
-        showError("Ошибка инициализации: " + e.message);
-      } finally {
-        APP_READY = true;
-        if (CURRENT_DEAL_ID) {
-          loadDealState();
+          return '"[unserializable]"';
         }
       }
-    }
-    
-  let pmIsFullscreen = false;
-  let pmPrevRect = null;
 
-  let pmItemsIsFullscreen = false;
-  let pmWasFullscreenBeforeItems = false;
+      const LOG_BACKEND_URL = ""; // <-- пусто = выключено, или "/api/logs" если эндпоинт есть
 
-  function togglePriceItemsFullscreen() {
-    const backdrop = document.getElementById("price-manager-backdrop");
-    if (!backdrop) return;
-
-    const dialog = backdrop.querySelector(".modal-dialog");
-    if (!dialog) return;
-
-    const btn = document.getElementById("pm-items-btn-maximize");
-    if (!btn) return;
-
-    if (!pmItemsIsFullscreen) {
-      // запомним, был ли диалог уже во весь экран
-      pmWasFullscreenBeforeItems = pmIsFullscreen;
-
-      // для “по-настоящему большого” режима товаров — разворачиваем и модалку тоже
-      if (!pmIsFullscreen) togglePriceManagerFullscreen();
-
-      dialog.classList.add("pm-items-fullscreen");
-      btn.textContent = "❐";
-      pmItemsIsFullscreen = true;
-    } else {
-      dialog.classList.remove("pm-items-fullscreen");
-      btn.textContent = "⛶";
-      pmItemsIsFullscreen = false;
-
-      // если модалку разворачивали только ради товаров — вернём как было
-      if (!pmWasFullscreenBeforeItems && pmIsFullscreen) {
-        togglePriceManagerFullscreen();
-      }
-    }
-  }
-
-
-  function togglePriceManagerFullscreen() {
-    const backdrop = document.getElementById("price-manager-backdrop");
-    if (!backdrop) return;
-
-    const dialog = backdrop.querySelector(".modal-dialog");
-    if (!dialog) return;
-
-    const btn = document.getElementById("pm-btn-maximize");
-
-    if (!pmIsFullscreen) {
-      // сохраняем текущие реальные размеры/позицию
-      pmPrevRect = {
-        width: dialog.style.width || (dialog.getBoundingClientRect().width + "px"),
-        height: dialog.style.height || (dialog.getBoundingClientRect().height + "px"),
-        left: dialog.style.left || (dialog.offsetLeft + "px"),
-        top: dialog.style.top || (dialog.offsetTop + "px"),
-      };
-
-      dialog.style.left = "20px";
-      dialog.style.top = "20px";
-      dialog.style.width = (window.innerWidth - 40) + "px";
-      dialog.style.height = (window.innerHeight - 40) + "px";
-
-      pmIsFullscreen = true;
-    } else {
-      if (pmPrevRect) {
-        dialog.style.width = pmPrevRect.width;
-        dialog.style.height = pmPrevRect.height;
-        dialog.style.left = pmPrevRect.left;
-        dialog.style.top = pmPrevRect.top;
-      }
-      pmIsFullscreen = false;
-    }
-
-    // иконку меняем ПОСЛЕ переключения
-    if (btn) btn.textContent = pmIsFullscreen ? "❐" : "⛶";
-  }
-
-
-    // ------------------ Модалка управления прайсами ------------------
-    let pmItemsSearchTerm = "";
-    let pmSelectedId = null;      
-    let pmSearchTerm = "";        
-    let pmItems = [];            
-    let pmItemsDirty = false;    
-    let pmIsDragging = false;
-    let pmIsResizing = false;
-    let pmDragResizeInited = false;
-    let pmDragState = {
-      dragging: false,
-      offsetX: 0,
-      offsetY: 0,
-    };
-
-    function enablePriceManagerDragging() {
-      const backdrop = document.getElementById("price-manager-backdrop");
-      if (!backdrop) return;
-      const dialog = backdrop.querySelector(".modal-dialog");
-      const header = dialog.querySelector(".modal-header");
-      if (!header) return;
-
-      const dragState = {
-        offsetX: 0,
-        offsetY: 0,
-      };
-
-      const isResizeHandle = (target) => {
-        return target.closest(".modal-resize-handle") !== null;
-      };
-
-      header.addEventListener("mousedown", (e) => {
-        if (e.button !== 0) return;
-        if (e.target.closest(".modal-close-btn")) return;
-        if (isResizeHandle(e.target)) return;
-        if (pmIsResizing) return;
-
-        pmIsDragging = true;
-        dragState.offsetX = e.clientX - dialog.offsetLeft;
-        dragState.offsetY = e.clientY - dialog.offsetTop;
-        dialog.style.position = "absolute";
-        dialog.style.margin = 0;
-        document.body.style.userSelect = "none";
-      });
-
-      const stopDrag = () => {
-        pmIsDragging = false;
-        document.body.style.userSelect = "";
-      };
-
-      window.addEventListener("mouseup", stopDrag);
-      window.addEventListener("blur", stopDrag);
-      document.addEventListener("mouseleave", stopDrag);
-
-      document.addEventListener("mousemove", (e) => {
-        if (!pmIsDragging) return;
-        dialog.style.left = e.clientX - dragState.offsetX + "px";
-        dialog.style.top = e.clientY - dragState.offsetY + "px";
-      });
-    }
-
-
-    function enablePriceManagerResizing() {
-      const backdrop = document.getElementById("price-manager-backdrop");
-      if (!backdrop) return;
-      const dialog = backdrop.querySelector(".modal-dialog");
-
-      
-      const MIN_WIDTH = 600;
-      const MIN_HEIGHT = 150;
-
-      let resizing = false;
-      let mode = null;
-
-      let startX, startY;
-      let startWidth, startHeight;
-      let startLeft, startTop;
-
-      const startResize = (e, resizeMode) => {
-        if (e.button !== 0) return;
-        e.preventDefault();
-
-        resizing = true;
-        pmIsResizing = true;
-        mode = resizeMode;
-
-        startX = e.clientX;
-        startY = e.clientY;
-        startWidth = dialog.offsetWidth;
-        startHeight = dialog.offsetHeight;
-        startLeft = dialog.offsetLeft;
-        startTop = dialog.offsetTop;
-
-        document.body.style.userSelect = "none";
-      };
-
-      const stopResize = () => {
-        if (!resizing) return;
-        resizing = false;
-        pmIsResizing = false;
-        document.body.style.userSelect = "";
-      };
-
-      window.addEventListener("mouseup", stopResize);
-      window.addEventListener("blur", stopResize);
-      document.addEventListener("mouseleave", stopResize);
-
-      document.addEventListener("mousemove", (e) => {
-        if (!resizing) return;
-
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-
-        let newWidth = startWidth;
-        let newHeight = startHeight;
-        let newLeft = startLeft;
-        let newTop = startTop;
-
-        switch (mode) {
-          case "right":
-
-            newWidth = Math.max(MIN_WIDTH, startWidth + dx);
-            break;
-
-          case "left": {
-
-            const rightEdge = startLeft + startWidth;
-
-            let candidateLeft = startLeft + dx;
-            let candidateWidth = rightEdge - candidateLeft;
-
-            if (candidateWidth < MIN_WIDTH) {
-              candidateWidth = MIN_WIDTH;
-              candidateLeft = rightEdge - MIN_WIDTH;
-            }
-
-            newLeft = candidateLeft;
-            newWidth = candidateWidth;
-            break;
-          }
-
-          case "bottom":
-            newHeight = Math.max(MIN_HEIGHT, startHeight + dy);
-            break;
-
-          case "top": {
-            let candidateTop = startTop + dy;
-            let candidateHeight = startHeight - dy;
-
-            if (candidateHeight < MIN_HEIGHT) {
-              candidateHeight = MIN_HEIGHT;
-              candidateTop = startTop + (startHeight - MIN_HEIGHT);
-            }
-
-            newTop = candidateTop;
-            newHeight = candidateHeight;
-            break;
-          }
-
-          // УГЛЫ
-
-          case "corner-rb": // правый-нижний
-            newWidth = Math.max(MIN_WIDTH, startWidth + dx);
-            newHeight = Math.max(MIN_HEIGHT, startHeight + dy);
-            break;
-
-          case "corner-rt": { // правый-верхний
-            newWidth = Math.max(MIN_WIDTH, startWidth + dx);
-
-            let candidateTop = startTop + dy;
-            let candidateHeight = startHeight - dy;
-
-            if (candidateHeight < MIN_HEIGHT) {
-              candidateHeight = MIN_HEIGHT;
-              candidateTop = startTop + (startHeight - MIN_HEIGHT);
-            }
-
-            newTop = candidateTop;
-            newHeight = candidateHeight;
-            break;
-          }
-
-          case "corner-lb": { // левый-нижний
-            const rightEdge = startLeft + startWidth;
-
-            let candidateLeft = startLeft + dx;
-            let candidateWidth = rightEdge - candidateLeft;
-
-            if (candidateWidth < MIN_WIDTH) {
-              candidateWidth = MIN_WIDTH;
-              candidateLeft = rightEdge - MIN_WIDTH;
-            }
-
-            newLeft = candidateLeft;
-            newWidth = candidateWidth;
-            newHeight = Math.max(MIN_HEIGHT, startHeight + dy);
-            break;
-          }
-
-          case "corner-lt": { // левый-верхний
-            const rightEdge = startLeft + startWidth;
-
-            let candidateLeft = startLeft + dx;
-            let candidateWidth = rightEdge - candidateLeft;
-
-            if (candidateWidth < MIN_WIDTH) {
-              candidateWidth = MIN_WIDTH;
-              candidateLeft = rightEdge - MIN_WIDTH;
-            }
-
-            newLeft = candidateLeft;
-            newWidth = candidateWidth;
-
-            let candidateTop = startTop + dy;
-            let candidateHeight = startHeight - dy;
-
-            if (candidateHeight < MIN_HEIGHT) {
-              candidateHeight = MIN_HEIGHT;
-              candidateTop = startTop + (startHeight - MIN_HEIGHT);
-            }
-
-            newTop = candidateTop;
-            newHeight = candidateHeight;
-            break;
-          }
-        }
-
-        dialog.style.width = newWidth + "px";
-        dialog.style.height = newHeight + "px";
-        dialog.style.left = newLeft + "px";
-        dialog.style.top = newTop + "px";
-      });
-
-      // привязка хэндлов
-      dialog.querySelector(".resize-right")
-        .addEventListener("mousedown", (e) => startResize(e, "right"));
-      dialog.querySelector(".resize-left")
-        .addEventListener("mousedown", (e) => startResize(e, "left"));
-      dialog.querySelector(".resize-bottom")
-        .addEventListener("mousedown", (e) => startResize(e, "bottom"));
-      dialog.querySelector(".resize-top")
-        .addEventListener("mousedown", (e) => startResize(e, "top"));
-
-      dialog.querySelector(".resize-corner-rb")
-        .addEventListener("mousedown", (e) => startResize(e, "corner-rb"));
-      dialog.querySelector(".resize-corner-rt")
-        .addEventListener("mousedown", (e) => startResize(e, "corner-rt"));
-      dialog.querySelector(".resize-corner-lb")
-        .addEventListener("mousedown", (e) => startResize(e, "corner-lb"));
-      dialog.querySelector(".resize-corner-lt")
-        .addEventListener("mousedown", (e) => startResize(e, "corner-lt"));
-    }
-
-    function markDirty() {
-      hasUnsavedChanges = true;
-
-      const toast = document.querySelector(".toast.persistent");
-      if (toast) {
-        toast.classList.remove("visible");
-        setTimeout(() => toast.remove(), 200);
-      }
-    }
-
-    function markSaved() {
-      hasUnsavedChanges = false;
-    }
-
-    function confirmNoUnsavedToast(message) {
-      suppressUnsavedToast = true;
-      try {
-        return window.confirm(message);
-      } finally {
-        // небольшой таймаут, чтобы blur успел отстрелять во время confirm
-        setTimeout(() => { suppressUnsavedToast = false; }, 0);
-      }
-    }
-
-    function showToast(message, type = "success", persistent = false) {
-      const container = document.getElementById("toast-container");
-      if (!container) return;
-
-      if (persistent && container.querySelector(".toast.persistent")) return;
-
-      const toast = document.createElement("div");
-      toast.className = "toast";
-      if (type !== "success") toast.classList.add("toast-error");
-      if (persistent) toast.classList.add("persistent");
-
-      const icon = document.createElement("div");
-      icon.className = "toast-icon";
-      icon.textContent = (type === "success") ? "✓" : "!";
-
-      const text = document.createElement("div");
-      text.className = "toast-text";
-      text.textContent = message;
-
-      toast.appendChild(icon);
-      toast.appendChild(text);
-      container.appendChild(toast);
-
-      setTimeout(() => toast.classList.add("visible"), 10);
-
-      if (!persistent) {
-        setTimeout(() => {
-          toast.classList.remove("visible");
-          setTimeout(() => toast.remove(), 200);
-        }, 2500);
-      }
-    }
-
-    function openPriceManager() {
-      const backdrop = document.getElementById("price-manager-backdrop");
-      if (!backdrop) return;
-
-      resetPriceManagerFullscreenState();
-
-      const dialog = backdrop.querySelector(".modal-dialog");
-
-      backdrop.classList.add("visible");
-      backdrop.style.display = "flex";
-
-      pmIsDragging = false;
-      pmIsResizing = false;
-
-      const START_WIDTH = 900;
-      const START_HEIGHT = 500;
-
-      dialog.style.position = "absolute";
-      dialog.style.margin = 0;
-      dialog.style.width = START_WIDTH + "px";
-      dialog.style.height = START_HEIGHT + "px";
-
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const rect = dialog.getBoundingClientRect();
-
-      const left = Math.max((vw - rect.width) / 2, 20);
-      const top = Math.max((vh - rect.height) / 2, 20);
-
-      dialog.style.left = left + "px";
-      dialog.style.top = top + "px";
-
-      if (!pmDragResizeInited) {
-          enablePriceManagerDragging();
-          enablePriceManagerResizing();
-          pmDragResizeInited = true;
-        }
-
-      pmSearchTerm = "";
-      const searchInput = document.getElementById("pm-search-input");
-      if (searchInput) searchInput.value = "";
-
-      loadPriceListsForManager();
-
-      pmIsFullscreen = false;
-      setPriceManagerFullscreen(true);
-    }
-
-    function setPriceManagerFullscreen(isOn) {
-      const backdrop = document.getElementById("price-manager-backdrop");
-      if (!backdrop) return;
-
-      const dialog = backdrop.querySelector(".modal-dialog");
-      if (!dialog) return;
-
-      const btn = document.getElementById("pm-btn-maximize");
-
-      // включаем fullscreen
-      if (isOn) {
-        // ✅ сохраняем "предыдущее" состояние ОДИН раз, если сейчас не fullscreen
-        if (!pmIsFullscreen) {
-          const rect = dialog.getBoundingClientRect();
-          pmPrevRect = {
-            width: dialog.style.width || rect.width + "px",
-            height: dialog.style.height || rect.height + "px",
-            left: dialog.style.left || dialog.offsetLeft + "px",
-            top: dialog.style.top || dialog.offsetTop + "px",
-          };
-        }
-
-        dialog.style.left = "20px";
-        dialog.style.top = "20px";
-        dialog.style.width = "calc(100vw - 40px)";
-        dialog.style.height = "calc(100vh - 40px)";
-
-        pmIsFullscreen = true;
-        if (btn) btn.textContent = "❐";
-        return;
-      }
-
-      // выключаем fullscreen (✅ восстанавливаем сохранённый прямоугольник)
-      if (pmPrevRect) {
-        dialog.style.width = pmPrevRect.width;
-        dialog.style.height = pmPrevRect.height;
-        dialog.style.left = pmPrevRect.left;
-        dialog.style.top = pmPrevRect.top;
-      } else {
-        // fallback если вдруг не было сохранения
-        dialog.style.width = "900px";
-        dialog.style.height = "500px";
-
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        const left = Math.max((vw - 900) / 2, 20);
-        const top = Math.max((vh - 500) / 2, 20);
-
-        dialog.style.left = left + "px";
-        dialog.style.top = top + "px";
-      }
-
-      pmIsFullscreen = false;
-      if (btn) btn.textContent = "⛶";
-    }
-
-
-    function resetPriceManagerFullscreenState() {
-      pmIsFullscreen = false;
-      pmPrevRect = null;
-
-      const backdrop = document.getElementById("price-manager-backdrop");
-      const dialog = backdrop?.querySelector(".modal-dialog");
-      const btn = document.getElementById("pm-btn-maximize");
-
-      if (btn) btn.textContent = "⛶"; // состояние “не развернуто”
-      if (dialog) {
-        // на всякий случай убираем стили, если они остались
-        dialog.style.width = "";
-        dialog.style.height = "";
-        dialog.style.left = "";
-        dialog.style.top = "";
-      }
-    }
-
-    function closePriceManager() {
-      if (!confirmClosePriceManager()) {
-        return;
-      }
-
-      resetPriceManagerFullscreenState();
-
-      const backdrop = document.getElementById("price-manager-backdrop");
-      if (!backdrop) return;
-
-      const dialog = backdrop.querySelector(".modal-dialog");
-      if (dialog) dialog.classList.remove("pm-items-fullscreen");
-      pmItemsIsFullscreen = false;
-
-      backdrop.classList.remove("visible");
-      backdrop.style.display = "none";
-    }
-
-    function confirmClosePriceManager() {
-      if (!pmItemsDirty) {
-        return true;
-      }
-
-      if(!confirmNoUnsavedToast){
-        return confirm(
-          "У вас есть несохранённые изменения.\n\n" +
-          "Вы уверены, что хотите закрыть окно и потерять изменения?"
-        );
-      }
-    }
-
-    function getFilteredPriceLists() {
-      if (!pmSearchTerm) return PRICE_LISTS;
-      const term = pmSearchTerm.toLowerCase();
-      return PRICE_LISTS.filter(pl =>
-        (pl.name || "").toLowerCase().includes(term)
-      );
-    }
-
-    async function loadPriceListsForManager(selectId = null) {
-      try {
-        await fetchPriceLists();
-
-        const container = document.getElementById("pm-price-list-container");
-        container.innerHTML = "";
-
-        const filtered = getFilteredPriceLists();
-
-        if (!filtered.length) {
-          container.textContent = "Прайс-листы не найдены.";
-          pmSelectedId = null;
-          fillPriceManagerForm(null);
-          pmItems = [];
-          pmItemsDirty = false;
-          renderPriceItemsTable();
-          return;
-        }
-
-        if (selectId === null) {
-          selectId = filtered[0].id;
-        }
-        pmSelectedId = selectId;
-
-        filtered.forEach(pl => {
-          const row = document.createElement("div");
-          row.className = "price-list-item";
-          if (pl.id === pmSelectedId) row.classList.add("active");
-
-          const nameSpan = document.createElement("div");
-          nameSpan.className = "price-list-item-name";
-          nameSpan.textContent = pl.name || "Без названия";
-
-          const countSpan = document.createElement("div");
-          countSpan.className = "price-list-item-count";
-          const cnt = typeof pl.items_count === "number" ? pl.items_count : 0;
-          countSpan.textContent = cnt + " поз.";
-
-          row.appendChild(nameSpan);
-          row.appendChild(countSpan);
-
-          row.addEventListener("click", async () => {
-            pmSelectedId = pl.id;
-            renderPriceListsSidebar();
-            fillPriceManagerForm(pl);
-            await loadPriceItemsForCurrentPriceList();
-          });
-
-          container.appendChild(row);
-        });
-
-        const selected = PRICE_LISTS.find(p => p.id === pmSelectedId) || filtered[0];
-        fillPriceManagerForm(selected);
-        renderPriceListsSidebar();
-        await loadPriceItemsForCurrentPriceList();
-      } catch (e) {
-        console.error("Ошибка загрузки прайсов для модалки:", e);
-        showToast("Ошибка загрузки списка прайсов", "error");
-      }
-    }
-
-    function renderPriceListsSidebar() {
-      const container = document.getElementById("pm-price-list-container");
-      const rows = container.querySelectorAll(".price-list-item");
-      const filtered = getFilteredPriceLists();
-
-      rows.forEach((row, index) => {
-        const pl = filtered[index];
-        if (!pl) return;
-        if (pl.id === pmSelectedId) {
-          row.classList.add("active");
-        } else {
-          row.classList.remove("active");
-        }
-      });
-    }
-
-    function fillPriceManagerForm(priceList) {
-      const nameInput = document.getElementById("pm-input-name");
-      const descInput = document.getElementById("pm-input-description");
-      const metaEl = document.getElementById("pm-meta");
-
-      if (!priceList) {
-        nameInput.value = "";
-        descInput.value = "";
-        metaEl.textContent = "Товаров в прайсе: 0";
-        return;
-      }
-
-      nameInput.value = priceList.name || "";
-      descInput.value = priceList.description || "";
-
-      const cnt = typeof priceList.items_count === "number" ? priceList.items_count : 0;
-      metaEl.textContent = "Товаров в прайсе: " + cnt;
-    }
-
-    async function loadPriceItemsForCurrentPriceList() {
-      pmItems = [];
-      pmItemsDirty = false;
-      renderPriceItemsTable();
-
-      if (!pmSelectedId) return;
-
-      try {
-        const res = await fetch(apiBase + `/api/prices/${pmSelectedId}/items`);
-        if (!res.ok) throw new Error("Ошибка загрузки товаров прайса");
-        const data = await res.json() || [];
-
-        console.log("items sample:", data?.[0], Object.keys(data?.[0] || {}));
-
-        pmItems = (data || []).map(x => ({
-          ...x,
-          price: toNumberMoney(pickPrice(x)),
-          selected: false
-        }));
-        pmItemsDirty = false;
-        renderPriceItemsTable();
-      } catch (e) {
-        console.error(e);
-        showToast("Не удалось загрузить товары прайса", "error");
-      }
-    }
-
-    function pickPrice(x) {
-      return x?.price ?? x?.PRICE ?? x?.Price ?? x?.value ?? x?.VALUE ?? x?.price_value ?? x?.PRICE_VALUE;
-    }
-
-    function renderPriceItemsTable() {
-      const table = document.getElementById("pm-items-table");
-      if (!table) return;
-
-      const filteredItems = pmItems.filter(item => {
-        if (!pmItemsSearchTerm) return true;
-        const name = (item.product_name || "").toLowerCase();
-        return name.includes(pmItemsSearchTerm);
-      });
-
-      const metaEl = document.getElementById("pm-meta");
-
-      if (!filteredItems.length) {
-        table.innerHTML = `
-          <thead>
-            <tr>
-              <th style="width:40px;">#</th>
-              <th style="width:110px;">Цена</th>
-              <th>Товар</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td colspan="3" style="padding:8px;color:#888;">Нет товаров для отображения.</td>
-            </tr>
-          </tbody>
-        `;
-        if (metaEl) metaEl.textContent = "Товаров в прайсе: 0";
-        return;
-      }
-
-      let html = `
-        <thead>
-          <tr>
-            <th style="width:34px; text-align:center;">
-            <input type="checkbox" id="pm-cb-select-all">
-            </th>
-            <th style="width:40px;">#</th>
-            <th style="width:110px;">Цена</th>
-            <th>Товар</th>
-            <th style="width:44px;"></th>
-          </tr>
-        </thead>
-        <tbody>
-      `;
-
-      filteredItems.forEach((item, index) => {
-        const name = item.product_name || "";
-        const desc = item.product_description || "";
-        const price = item.price != null ? item.price : 0;
-
-        const pid = item.product_id;
-
-        html += `
-          <tr>
-            <td style="text-align:center;">
-            <input type="checkbox" class="pm-cb-item" data-pid="${pid}">
-            </td>
-            <td>${index + 1}</td>
-            <td>
-              <input
-                type="text"
-                class="price-item-price-input"
-                data-pid="${pid}"
-                value="${formatMoney(price)}"
-              >
-            </td>
-            <td>
-              <div class="pm-item-title">${name}</div>
-            </td>
-            <td style="text-align:center;">
-              <button
-                class="btn btn-light pm-item-del-btn"
-                data-pid="${pid}"
-                type="button"
-                title="Удалить из прайса"
-                style="padding:4px 6px;"
-              >❌</button>
-            </td>
-          </tr>
-        `;
-      });
-
-      html += "</tbody>";
-      table.innerHTML = html;
-
-      // --- чекбоксы ---
-      const cbAll = table.querySelector("#pm-cb-select-all");
-      const cbItems = table.querySelectorAll(".pm-cb-item");
-
-      // выставляем состояние чекбоксов по данным
-      cbItems.forEach(cb => {
-        const pid = String(cb.dataset.pid);
-        const it = pmItems.find(x => String(x.product_id) === pid);
-        cb.checked = !!it?.selected;
-
-        cb.addEventListener("change", () => {
-          if (!it) return;
-          it.selected = cb.checked;
-
-          // обновим "выбрать все"
-          const visible = filteredItems.map(x => String(x.product_id));
-          const allChecked = visible.length > 0 && visible.every(id => {
-            const v = pmItems.find(z => String(z.product_id) === id);
-            return !!v?.selected;
-          });
-          if (cbAll) cbAll.checked = allChecked;
-        });
-      });
-
-      if (cbAll) {
-        // состояние "выбрать все" по текущему фильтру (видимым строкам)
-        const visibleIds = filteredItems.map(x => String(x.product_id));
-        cbAll.checked = visibleIds.length > 0 && visibleIds.every(id => {
-          const v = pmItems.find(z => String(z.product_id) === id);
-          return !!v?.selected;
-        });
-
-        cbAll.addEventListener("change", () => {
-          const checked = cbAll.checked;
-          filteredItems.forEach(fi => {
-            const it = pmItems.find(x => String(x.product_id) === String(fi.product_id));
-            if (it) it.selected = checked;
-          });
-          renderPriceItemsTable(); // перерисуем, чтобы чекбоксы обновились
-        });
-      }
-
-      if (metaEl) 
-        metaEl.textContent = `Товаров в прайсе: ${filteredItems.length} / ${pmItems.length}`;
-
-      const inputs = table.querySelectorAll(".price-item-price-input");
-      inputs.forEach(input => {
-        input.style.width = "100%";
-
-        input.addEventListener("focus", () => {
-          const pid = String(input.dataset.pid);
-          const item = pmItems.find(x => String(x.product_id) === pid);
-          if (!item) return;
-          const num = Number(item.price) || 0;
-          input.value = num.toString().replace(".", ",");
-        });
-
-        input.addEventListener("blur", () => {
-          const pid = String(input.dataset.pid);
-          const item = pmItems.find(x => String(x.product_id) === pid);
-          if (!item) return;
-          let raw = input.value || "";
-          raw = raw.replace(/\s+/g, "").replace(",", ".");
-          let num = Number(raw);
-          if (isNaN(num)) num = 0;
-          item.price = num;
-          pmItemsDirty = true;
-          input.value = formatMoney(item.price);
-        });
-      });
-      table.querySelectorAll(".pm-item-del-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const pid = String(btn.dataset.pid);
-          const it = pmItems.find(x => String(x.product_id) === pid);
-          const title = it?.product_name || "товар";
-
-          if (!confirmNoUnsavedToast(`Удалить "${title}" из прайс-листа?`)) return;
-
-          pmItems = pmItems.filter(x => String(x.product_id) !== pid);
-          pmItemsDirty = true;
-          renderPriceItemsTable();
-        });
-      }); 
-    }
-
-    async function ensurePriceListProductIds(plId) {
-      if (!plId) return null;
-      const key = String(plId);
-      if (PRICE_LIST_PRODUCT_IDS_CACHE.has(key)) {
-        return PRICE_LIST_PRODUCT_IDS_CACHE.get(key);
-      }
-
-      try {
-        const res = await fetch(`${apiBase}/api/prices/${encodeURIComponent(key)}/items?ids_only=1`);
-        if (!res.ok) return null;
-
-        const data = await res.json();
-
-        let arr = data;
-        if (data && typeof data === "object" && !Array.isArray(data)) {
-          arr = data.ids || data.items || [];
-        }
-        if (!Array.isArray(arr)) arr = [];
-
-        const ids = arr
-          .map(x => {
-            if (x == null) return null;
-            if (typeof x === "string" || typeof x === "number") return String(x);
-            if (typeof x === "object") {
-              return x.product_id != null ? String(x.product_id)
-                  : x.id != null ? String(x.id)
-                  : x.PRODUCT_ID != null ? String(x.PRODUCT_ID)
-                  : null;
-            }
-            return null;
-          })
-          .filter(Boolean);
-
-        const set = new Set(ids);
-        PRICE_LIST_PRODUCT_IDS_CACHE.set(key, set);
-        return set;
-      } catch (e) {
-        console.warn("ensurePriceListProductIds failed:", e);
-        return null;
-      }
-    }
-
-    function pmNewPriceList() {
-      pmSelectedId = null;
-      pmItems = [];
-      pmItemsDirty = false;
-      fillPriceManagerForm(null);
-      renderPriceListsSidebar();
-      renderPriceItemsTable();
-    }
-
-    async function pmSavePriceList() {
-      const nameInput = document.getElementById("pm-input-name");
-      const descInput = document.getElementById("pm-input-description");
-
-      const name = (nameInput.value || "").trim();
-      const description = (descInput.value || "").trim();
-
-      if (!name) {
-        showToast("Введите название прайса", "error");
-        return;
-      }
-
-      const wasNew = (pmSelectedId == null);
-
-      try {
-        let savedId = pmSelectedId;
-
-        if (pmSelectedId == null) {
-          
-          const res = await fetch(apiBase + "/api/prices/", {
+      async function sendLogToBackend(level, message, data) {
+        if (!LOG_BACKEND_URL) return; // ✅ выключено
+        try {
+          await fetch(apiBase + LOG_BACKEND_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, description })
+            body: JSON.stringify({
+              variant,
+              format,
+              entity_mode: CURRENT_CONTEXT.mode,   // "DEAL" | "QUOTE"
+              entity_id: String(CURRENT_CONTEXT.id),
+              lines: state.lines,
+              totals
+            })
           });
-          if (!res.ok) throw new Error("Ошибка создания прайса");
-          const created = await res.json();
-          savedId = created.id;
-          pmSelectedId = savedId;
-        } else {
-          
-          const res = await fetch(apiBase + `/api/prices/${pmSelectedId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, description })
-          });
-          if (!res.ok) throw new Error("Ошибка сохранения прайса");
+        } catch (e) {}
+      }
+
+      function logEvent(message, data, level = "INFO") {
+        const line =
+          `[${new Date().toISOString()}] [${level}] ${message}` +
+          (data ? ` | ${safeJsonStringify(data)}` : "");
+
+        console.log(line);
+
+        try {
+          const prev = JSON.parse(localStorage.getItem(LOG_KEY) || "[]");
+          prev.push(line);
+          localStorage.setItem(LOG_KEY, JSON.stringify(prev.slice(-LOG_MAX)));
+        } catch (e) {}
+
+        // Fire-and-forget (optional backend logging)
+        sendLogToBackend(level, message, data);
+      }
+
+      // helper: show last logs quickly
+      window.__pricesWidgetDumpLog = function () {
+        try {
+          const arr = JSON.parse(localStorage.getItem(LOG_KEY) || "[]");
+          console.log("=== prices widget log dump ===");
+          arr.forEach(x => console.log(x));
+          console.log("=== end ===");
+        } catch (e) {
+          console.log("no log");
         }
+      };
 
-        const payloadItems = pmItems
-          .filter(it => it.product_id) // и/или it.price != null
-          .map(it => ({ product_id: it.product_id, price: toNumberMoney(it.price)
-          }));
+      // -------------------- UI HELPERS --------------------
+      function showError(message) {
+        const banner = document.getElementById("error-banner");
+        if (!banner) return;
+        banner.textContent = message;
+        banner.style.display = "block";
+      }
 
+      function clearError() {
+        const banner = document.getElementById("error-banner");
+        if (!banner) return;
+        banner.textContent = "";
+        banner.style.display = "none";
+      }
 
-        if (pmItemsDirty && savedId != null) {
-          const resItems = await fetch(apiBase + `/api/prices/${savedId}/items`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ items: payloadItems })
-          });
-          if (!resItems.ok) throw new Error("Ошибка сохранения цен в прайсе");
-          pmItemsDirty = false;
+      function showToast(message, type = "success", persistent = false) {
+        const container = document.getElementById("toast-container");
+        if (!container) return;
+
+        if (persistent && container.querySelector(".toast.persistent")) return;
+
+        const toast = document.createElement("div");
+        toast.className = "toast";
+        if (type !== "success") toast.classList.add("toast-error");
+        if (persistent) toast.classList.add("persistent");
+
+        const icon = document.createElement("div");
+        icon.className = "toast-icon";
+        icon.textContent = (type === "success") ? "✓" : "!";
+
+        const text = document.createElement("div");
+        text.className = "toast-text";
+        text.textContent = message;
+
+        toast.appendChild(icon);
+        toast.appendChild(text);
+        container.appendChild(toast);
+
+        setTimeout(() => toast.classList.add("visible"), 10);
+
+        if (!persistent) {
+          setTimeout(() => {
+            toast.classList.remove("visible");
+            setTimeout(() => toast.remove(), 200);
+          }, 2500);
         }
-
-        await loadPriceListsForManager(savedId);
-        await fetchPriceLists();
-        renderLines();
-        PRICE_LIST_PRODUCT_IDS_CACHE.delete(String(savedId));
-
-        showToast(wasNew ? "Прайс создан" : "Прайс сохранён");
-      } catch (e) {
-        console.error(e);
-        showToast(e.message || "Ошибка сохранения прайс-листа", "error");
-      }
-    }
-
-    
-    async function pmCopyPriceList() {
-      if (pmSelectedId == null) {
-        showToast("Сначала выберите прайс для копирования", "error");
-        return;
-      }
-      try {
-        const res = await fetch(apiBase + `/api/prices/${pmSelectedId}/copy`, {
-          method: "POST"
-        });
-        if (!res.ok) throw new Error("Ошибка копирования прайса");
-        const created = await res.json();
-        await loadPriceListsForManager(created.id);
-        await fetchPriceLists();
-        showToast("Прайс скопирован");
-      } catch (e) {
-        console.error(e);
-        showToast(e.message || "Ошибка копирования прайс-листа", "error");
-      }
-    }
-
-    
-    async function pmDeletePriceList() {
-      if (pmSelectedId == null) {
-        showToast("Сначала выберите прайс для удаления", "error");
-        return;
       }
 
-      const deletedId = String(pmSelectedId);
-      const pl = PRICE_LISTS.find(p => p.id === pmSelectedId);
-      const name = pl ? pl.name : pmSelectedId;
-      const def = getDefaultPriceListId();
-
-      if (!confirmNoUnsavedToast(`Удалить прайс "${name}"? Это действие необратимо.`)) {
-        return;
-      }
-
-      try {
-        const res = await fetch(apiBase + `/api/prices/${pmSelectedId}`, {
-          method: "DELETE"
-        });
-        if (!res.ok) throw new Error("Ошибка удаления прайса");
-
-        pmSelectedId = null;
-        pmItems = [];
-        pmItemsDirty = false;
-
-        await loadPriceListsForManager(null);
-        await fetchPriceLists();
-        renderLines();
-
-        PRICE_LIST_PRODUCT_IDS_CACHE.delete(deletedId);
-
-        if (def && String(def) === deletedId) {
-          setDefaultPriceListId("");
-        }
-        showToast(`Прайс "${name}" удалён`);
-      } catch (e) {
-        console.error(e);
-        showToast(e.message || "Ошибка удаления прайс-листа", "error");
-      }
-    }
-
-    // ================== Генерация документов (PDF) ==================
-    function collectTotalsForDocs() {
-      let base = 0;
-      let discount = 0;
-      let noVat = 0;
-      let vat = 0;
-      let total = 0;
-
-      lines.forEach(l => {
-        const price = Number(l.price) || 0;
-        const qty = Number(l.quantity) || 0;
-        const discountPercent = Number(l.discountPercent) || 0;
-        const vatPercent = Number(l.vatPercent) || 0;
-
-        const lineBase = price * qty;
-        const lineDiscount = lineBase * (discountPercent / 100);
-        const baseAfterDiscount = lineBase - lineDiscount;
-        const lineVat = baseAfterDiscount * (vatPercent / 100);
-        const lineTotal = baseAfterDiscount + lineVat;
-
-        base += lineBase;
-        discount += lineDiscount;
-        noVat += baseAfterDiscount;
-        vat += lineVat;
-        total += lineTotal;
-      });
-
-      return { base, discount, no_vat: noVat, vat, total };
-    }
-
-    async function generateDocument() {
-      // На всякий случай пересчитаем строки
-      recalcAll();
-
-      const variantInput = document.querySelector('input[name="doc-variant"]:checked');
-      if (!variantInput) {
-        showToast("Выберите вариант документа", "error");
-        return;
-      }
-
-      const formatInput = document.querySelector('input[name="doc-format"]:checked');
-      const format = formatInput ? formatInput.value : "pdf";
-
-      const variant = variantInput.value;
-      const state = getAppStateForSave();
-      const totals = collectTotalsForDocs();
-
-      try {
-        const res = await fetch(apiBase + "/api/docs/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            variant,
-            format,                 // <-- ДОБАВИЛИ
-            deal_id: CURRENT_DEAL_ID,
-            lines: state.lines,
-            totals
-          })
-        });
-
-        if (!res.ok) {
-          showToast("Ошибка генерации документа", "error");
-          return;
-        }
-
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = (format === "docx")
-          ? "komercheskoe_predlozhenie.docx"
-          : "komercheskoe_predlozhenie.pdf";
-
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-
-        showToast("Документ сформирован", "success");
-      } catch (e) {
-        console.error(e);
-        showToast("Ошибка сети при генерации документа", "error");
-      }
-    }
-
-
-    document.addEventListener("DOMContentLoaded", () => {
-      productDropdownEl = document.getElementById("product-dropdown");
-      productDropdownListEl = document.getElementById("product-dropdown-list");
-      productSearchInputEl = document.getElementById("product-search-input");
-
-      // поиск внутри дропдауна
-      productSearchInputEl.addEventListener("input", () => {
-        renderProductDropdownList(productSearchInputEl.value);
-      });
-
-      // клик по фону закрывает дропдаун
-      document.addEventListener("click", (e) => {
+      function markDirty() {
+        hasUnsavedChanges = true;
         const toast = document.querySelector(".toast.persistent");
         if (toast) {
           toast.classList.remove("visible");
           setTimeout(() => toast.remove(), 200);
         }
-
-        if (!productDropdownEl) return;
-        if (!productDropdownEl.classList.contains("visible")) return;
-
-        const clickedOnLineInput = (currentProductInput && e.target === currentProductInput);
-        const clickedOnPmAddBtn = (pmAddAnchorEl && (e.target === pmAddAnchorEl || pmAddAnchorEl.contains(e.target)));
-
-        // закрываем только если клик реально "снаружи", и не по полю/кнопке открытия
-        if (!productDropdownEl.contains(e.target) && !clickedOnLineInput && !clickedOnPmAddBtn) {
-          closeProductDropdown();
-        }
-      });
-
-
-      document.getElementById("btn-add-row").addEventListener("click", () => {
-        const line = createEmptyLine();
-        lines.push(line);
-        markDirty();
-        recalcAll();
-        renderLines();
-      });
-
-      document.getElementById("btn-delete-selected").addEventListener("click", () => {
-        lines = lines.filter(l => !l.selected);
-        if (lines.length === 0) {
-          lines.push(createEmptyLine());
-        }
-        markDirty();
-        recalcAll();
-        renderLines();
-      });
-
-      const btnSync = document.getElementById("btn-sync-products");
-      if (btnSync) {
-        btnSync.addEventListener("click", () => {
-          syncProductsFromBitrix();
-        });
       }
 
-      // Пересчитать выбранные
-      document.getElementById("btn-recalc-selected").addEventListener("click", async () => {
-        for (const line of lines) {
-          if (!line.selected) continue;
-          await fetchPriceForLine(line);
-          recalcLine(line);
+      function markSaved() {
+        hasUnsavedChanges = false;
+      }
+
+      function confirmNoUnsavedToast(message) {
+        suppressUnsavedToast = true;
+        try {
+          return window.confirm(message);
+        } finally {
+          setTimeout(() => { suppressUnsavedToast = false; }, 0);
         }
+      }
+
+      // -------------------- MONEY --------------------
+      function toNumberMoney(v) {
+        if (v == null) return 0;
+        if (typeof v === "number") return isFinite(v) ? v : 0;
+        if (typeof v === "string") {
+          const s = v.trim().replace(/\s+/g, "").replace(",", ".");
+          const n = Number(s);
+          return isNaN(n) ? 0 : n;
+        }
+        return 0;
+      }
+
+      function formatMoney(value) {
+        let num = toNumberMoney(value);
+        num = num.toFixed(2);
+        let parts = num.split(".");
+        let intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+        let decPart = parts[1];
+        return `${intPart},${decPart}`;
+      }
+
+      // -------------------- LINES --------------------
+      function getDefaultPriceListId() {
+        try {
+          return window.localStorage ? window.localStorage.getItem(DEFAULT_PRICE_LIST_KEY) : null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function setDefaultPriceListId(id) {
+        try {
+          if (window.localStorage) window.localStorage.setItem(DEFAULT_PRICE_LIST_KEY, String(id));
+        } catch (e) {}
+      }
+
+      function createEmptyLine() {
+        return {
+          id: Date.now().toString() + Math.random().toString(16).slice(2),
+          productId: null,
+          productName: "",
+          priceListId: (() => {
+            const def = getDefaultPriceListId();
+            if (def && PRICE_LISTS.some(pl => String(pl.id) === String(def))) return def;
+            return PRICE_LISTS.length ? PRICE_LISTS[0].id : null;
+          })(),
+          price: 0,
+          quantity: 1,
+          discountPercent: 0,
+          vatPercent: 0,
+          base: 0,
+          discountAmount: 0,
+          vatAmount: 0,
+          total: 0,
+          selected: false,
+          missingInPriceList: false
+        };
+      }
+
+      function recalcLine(line) {
+        const price = Number(line.price) || 0;
+        const qty = Number(line.quantity) || 0;
+        const discountPercent = Number(line.discountPercent) || 0;
+        const vatPercent = Number(line.vatPercent) || 0;
+
+        const base = price * qty;
+        const discountAmount = base * (discountPercent / 100);
+        const baseAfterDiscount = base - discountAmount;
+        const vatAmount = baseAfterDiscount * (vatPercent / 100);
+        const total = baseAfterDiscount + vatAmount;
+
+        line.base = base;
+        line.discountAmount = discountAmount;
+        line.vatAmount = vatAmount;
+        line.total = total;
+      }
+
+      function updateSummary() {
+        let sumBase = 0;
+        let sumDiscount = 0;
+        let sumNoVat = 0;
+        let sumVat = 0;
+        let sumTotal = 0;
+
+        lines.forEach(l => {
+          sumBase += l.base;
+          sumDiscount += l.discountAmount;
+          const noVat = l.base - l.discountAmount;
+          sumNoVat += noVat;
+          sumVat += l.vatAmount;
+          sumTotal += l.total;
+        });
+
+        const elBase = document.getElementById("sum-base");
+        const elDiscount = document.getElementById("sum-discount");
+        const elNoVat = document.getElementById("sum-no-vat");
+        const elVat = document.getElementById("sum-vat");
+        const elTotal = document.getElementById("sum-total");
+
+        if (elBase) elBase.textContent = formatMoney(sumBase);
+        if (elDiscount) elDiscount.textContent = formatMoney(sumDiscount);
+        if (elNoVat) elNoVat.textContent = formatMoney(sumNoVat);
+        if (elVat) elVat.textContent = formatMoney(sumVat);
+        if (elTotal) elTotal.textContent = formatMoney(sumTotal);
+      }
+
+      function recalcAll() {
+        lines.forEach(recalcLine);
+        updateSummary();
+      }
+
+      function getAppStateForSave() {
+        const cleanLines = lines.map(l => ({
+          productId: l.productId,
+          productName: l.productName,
+          priceListId: l.priceListId,
+          price: l.price,
+          quantity: l.quantity,
+          discountPercent: l.discountPercent,
+          vatPercent: l.vatPercent
+        }));
+        return { lines: cleanLines };
+      }
+
+      function applyAppState(state) {
+        if (!state || !Array.isArray(state.lines) || !state.lines.length) {
+          lines = [createEmptyLine()];
+          lines[0].missingInPriceList = false;
+          recalcAll();
+          renderLines();
+          markSaved();
+          return;
+        }
+
+        lines = state.lines.map(raw => {
+          const line = createEmptyLine();
+          line.productId = raw.productId || null;
+          line.productName = raw.productName || "";
+          line.priceListId = raw.priceListId || (PRICE_LISTS.length ? PRICE_LISTS[0].id : null);
+          line.price = Number(raw.price) || 0;
+          line.quantity = Number(raw.quantity) || 1;
+          line.discountPercent = Number(raw.discountPercent) || 0;
+          line.vatPercent = Number(raw.vatPercent) || 0;
+          line.missingInPriceList = false;
+          recalcLine(line);
+          return line;
+        });
+
+        recalcAll();
+        renderLines();
+        markSaved();
+      }
+
+      // -------------------- BACKEND API --------------------
+      async function fetchProducts() {
+        const res = await fetch(apiBase + "/api/products/");
+        if (!res.ok) throw new Error("Ошибка загрузки товаров");
+        const data = (await res.json()) || [];
+
+        const map = new Map();
+        for (const p of data) {
+          if (!p.id) continue;
+          if (!map.has(p.id)) map.set(p.id, p);
+        }
+
+        PRODUCTS = Array.from(map.values()).sort((a, b) =>
+          (a.name || "").localeCompare(b.name || "", "ru", { sensitivity: "base" })
+        );
+
+        logEvent("Products loaded", { count: PRODUCTS.length });
+      }
+
+      async function fetchPriceLists() {
+        const res = await fetch(apiBase + "/api/prices/");
+        if (!res.ok) throw new Error("Ошибка загрузки прайсов");
+        const data = (await res.json()) || [];
+        PRICE_LISTS = data.map(pl => ({ ...pl, id: String(pl.id) }));
+        logEvent("Price lists loaded", { count: PRICE_LISTS.length });
+      }
+
+      async function ensurePriceListProductIds(plId) {
+        if (!plId) return null;
+        const key = String(plId);
+        if (PRICE_LIST_PRODUCT_IDS_CACHE.has(key)) return PRICE_LIST_PRODUCT_IDS_CACHE.get(key);
+
+        try {
+          const res = await fetch(`${apiBase}/api/prices/${encodeURIComponent(key)}/items?ids_only=1`);
+          if (!res.ok) return null;
+
+          const data = await res.json();
+          let arr = data;
+
+          if (data && typeof data === "object" && !Array.isArray(data)) {
+            arr = data.ids || data.items || [];
+          }
+          if (!Array.isArray(arr)) arr = [];
+
+          const ids = arr
+            .map(x => {
+              if (x == null) return null;
+              if (typeof x === "string" || typeof x === "number") return String(x);
+              if (typeof x === "object") {
+                return x.product_id != null ? String(x.product_id)
+                  : x.id != null ? String(x.id)
+                  : x.PRODUCT_ID != null ? String(x.PRODUCT_ID)
+                  : null;
+              }
+              return null;
+            })
+            .filter(Boolean);
+
+          const set = new Set(ids);
+          PRICE_LIST_PRODUCT_IDS_CACHE.set(key, set);
+          return set;
+        } catch (e) {
+          logEvent("ensurePriceListProductIds failed", { error: String(e), plId }, "WARN");
+          return null;
+        }
+      }
+
+      async function fetchPriceForLine(line) {
+        if (!line.productId || !line.priceListId) return;
+        const plId = String(line.priceListId);
+        const pid = String(line.productId);
+
+        const set = await ensurePriceListProductIds(plId);
+        if (set && !set.has(pid)) {
+          line.price = 0;
+          line.missingInPriceList = true;
+          return;
+        }
+
+        const url = `${apiBase}/api/prices/${encodeURIComponent(plId)}/price?product_id=${encodeURIComponent(pid)}`;
+        const res = await fetch(url);
+        if (!res.ok) return;
+
+        const data = await res.json();
+
+        if (data && data.price != null) {
+          line.price = Number(data.price) || 0;
+          line.missingInPriceList = false;
+        } else {
+          line.price = 0;
+          line.missingInPriceList = true;
+        }
+      }
+
+      async function autoUpdatePriceAndRecalc(line) {
+        await fetchPriceForLine(line);
+        recalcLine(line);
         updateSummary();
         renderLines();
-      });
+      }
 
-      const btnGenerateDoc = document.getElementById("btn-generate-doc");
-        if (btnGenerateDoc) {
-          btnGenerateDoc.addEventListener("click", generateDocument);
+      // -------------------- BITRIX WRAPPERS --------------------
+      function bxCall(method, params, cb) {
+        if (!window.BX24) {
+          const e = { message: "BX24 not available" };
+          logEvent("BX24 missing", { method, params }, "ERROR");
+          cb(e, null);
+          return;
         }
 
-      // кнопка "Управление прайсами"
-      document.getElementById("btn-manage-prices").addEventListener("click", () => {
-        openPriceManager();
-      });
+        logEvent("BX24 call → " + method, params);
 
-      // кнопки модалки "Управление прайсами"
-      const pmBackdrop = document.getElementById("price-manager-backdrop");
-      const pmBtnClose = document.getElementById("pm-btn-close");
-      const pmBtnCancel = document.getElementById("pm-btn-cancel");
-      const pmBtnNew = document.getElementById("pm-btn-new");
-      const pmBtnSave = document.getElementById("pm-btn-save");
-      const pmBtnCopy = document.getElementById("pm-btn-copy");
-      const pmBtnDelete = document.getElementById("pm-btn-delete");
-      const pmSearchInput = document.getElementById("pm-search-input");
-      const pmBtnMaximize = document.getElementById("pm-btn-maximize");
-      const pmItemsSearchInput = document.getElementById("pm-items-search");
-      const pmItemsBtnMaximize = document.getElementById("pm-items-btn-maximize");
-      const pmItemsBtnDelSelected = document.getElementById("pm-items-btn-del-selected");
-      const pmBtnDefault = document.getElementById("pm-btn-default");
-
-      if (pmBtnDefault) {
-        pmBtnDefault.addEventListener("click", () => {
-          if (!pmSelectedId) {
-            showToast("Сначала выберите прайс-лист", "error");
-            return;
-          }
-          setDefaultPriceListId(pmSelectedId);
-          showToast("Прайс-лист установлен по умолчанию");
-          renderPriceListsSidebar(); // чтобы обновить подсветку/маркер (если добавим)
-        });
-      }
-
-      if (pmItemsBtnDelSelected) {
-        pmItemsBtnDelSelected.addEventListener("click", () => {
-          const selected = pmItems.filter(x => x.selected);
-          if (!selected.length) {
-            showToast("Не выбрано ни одного товара", "error");
-            return;
-          }
-
-          if (!confirmNoUnsavedToast(`Удалить выбранные товары (${selected.length}) из прайс-листа?`)) return;
-
-          pmItems = pmItems.filter(x => !x.selected);
-          pmItemsDirty = true;
-          renderPriceItemsTable();
-        });
-      }
-      const pmItemsBtnAdd = document.getElementById("pm-items-btn-add");
-      if (pmItemsBtnAdd) {
-        pmItemsBtnAdd.addEventListener("click", async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-
+        BX24.callMethod(method, params, function (res) {
           try {
-            // если вдруг товары ещё не подгружены — подгружаем
-            if (!Array.isArray(PRODUCTS) || PRODUCTS.length === 0) {
-              await fetchProducts();
+            if (res.error && res.error()) {
+              const err = res.error();
+              logEvent("BX24 error ← " + method, { err, params }, "ERROR");
+              cb(err, null);
+              return;
             }
-            openPmAddProductDropdown(pmItemsBtnAdd);
-          } catch (err) {
-            console.error(err);
-            showToast("Не удалось загрузить список товаров", "error");
+
+            const data = (res.data && typeof res.data === "function") ? res.data() : (res.data ? res.data : null);
+            logEvent("BX24 ok ← " + method, { hasData: !!data });
+            cb(null, data);
+          } catch (e) {
+            logEvent("BX24 wrapper exception", { e: String(e), method, params }, "ERROR");
+            cb({ message: String(e) }, null);
           }
         });
       }
 
-
-      if (pmItemsSearchInput) {
-        pmItemsSearchInput.addEventListener("input", (e) => {
-          pmItemsSearchTerm = (e.target.value || "").toLowerCase();
-          renderPriceItemsTable();
-        });
-      }
-
-      if (pmBtnMaximize) {
-        pmBtnMaximize.addEventListener("click", (e) => {
-          e.stopPropagation();
-          setPriceManagerFullscreen(!pmIsFullscreen);
-        });
-      }
-
-      if (pmItemsBtnMaximize) {
-        pmItemsBtnMaximize.addEventListener("click", (e) => {
-          e.stopPropagation();
-          togglePriceItemsFullscreen();
-        });
-      }
-
-      if (pmBtnClose) pmBtnClose.addEventListener("click", closePriceManager);
-      if (pmBtnCancel) pmBtnCancel.addEventListener("click", closePriceManager);
-      if (pmBackdrop) {
-        pmBackdrop.addEventListener("click", (e) => {
-          if (pmIsDragging || pmIsResizing) return;
-
-          if (e.target === pmBackdrop) {
-            closePriceManager();
-          }
-        });
-      }
-      if (pmBtnNew) pmBtnNew.addEventListener("click", pmNewPriceList);
-      if (pmBtnSave) pmBtnSave.addEventListener("click", pmSavePriceList);
-      if (pmBtnCopy) pmBtnCopy.addEventListener("click", pmCopyPriceList);
-      if (pmBtnDelete) pmBtnDelete.addEventListener("click", pmDeletePriceList);
-
-      if (pmSearchInput) {
-        pmSearchInput.addEventListener("input", (e) => {
-          pmSearchTerm = e.target.value || "";
-          loadPriceListsForManager(pmSelectedId);
-        });
-      }
-
-
-      document.getElementById("btn-cancel").addEventListener("click", () => {
-        if (window.BX24 && BX24.closeApplication) {
-          BX24.closeApplication();
-        } else {
-          showToast("Отмена. Просто закройте вкладку.", "error");
+      function entityGet(cb) {
+        if (CURRENT_CONTEXT.mode === "QUOTE") {
+          // ✅ Quote: crm.item.get entityTypeId=7
+          bxCall("crm.item.get", { entityTypeId: 7, id: Number(CURRENT_CONTEXT.id) }, function (err, data) {
+            if (err) return cb(err, null);
+            // API returns { item: {...} }
+            cb(null, data && data.item ? data.item : data);
+          });
+          return;
         }
-      });
 
-      document.getElementById("btn-save").addEventListener("click", () => {
-        // Пересчитаем всё на всякий случай
+        // Deal (classic)
+        bxCall("crm.deal.get", { id: CURRENT_CONTEXT.id }, cb);
+      }
+
+      function entityUpdate(fields, cb) {
+        if (CURRENT_CONTEXT.mode === "QUOTE") {
+          // ✅ Quote: crm.item.update entityTypeId=7
+          bxCall("crm.item.update", {
+            entityTypeId: 7,
+            id: Number(CURRENT_CONTEXT.id),
+            fields: fields
+          }, cb);
+          return;
+        }
+
+        // Deal update
+        bxCall("crm.deal.update", { id: CURRENT_CONTEXT.id, fields: fields }, cb);
+      }
+
+      function getStateFieldName() {
+        return (CURRENT_CONTEXT.mode === "QUOTE") ? QUOTE_STATE_FIELD : DEAL_STATE_FIELD;
+      }
+
+      function getLocalStorageKey() {
+        if (!CURRENT_CONTEXT.mode || !CURRENT_CONTEXT.id) return null;
+        const prefix = (CURRENT_CONTEXT.mode === "QUOTE") ? LOCAL_STATE_PREFIX_QUOTE : LOCAL_STATE_PREFIX_DEAL;
+        return prefix + CURRENT_CONTEXT.id;
+      }
+
+      // -------------------- CONTEXT DETECT --------------------
+      function getQueryParam(name) {
+        try {
+          const s = window.location.search || "";
+          const m = s.match(new RegExp("[?&]" + name + "=(\\d+)", "i"));
+          return m ? m[1] : null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function setTagText() {
+        const tagEl = document.getElementById("tag-deal-info");
+        if (!tagEl) return;
+
+        if (!CURRENT_CONTEXT.mode || !CURRENT_CONTEXT.id) {
+          tagEl.textContent = "Сделка/Предложение: не определено";
+          return;
+        }
+
+        tagEl.textContent =
+          (CURRENT_CONTEXT.mode === "QUOTE" ? "Предложение: " : "Сделка: ") + CURRENT_CONTEXT.id;
+      }
+
+      function detectContextFromUrlFirst() {
+        // For quote we pass ?quote_id=61 (your case)
+        const qid = getQueryParam("quote_id");
+        if (qid) {
+          CURRENT_CONTEXT.mode = "QUOTE";
+          CURRENT_CONTEXT.id = String(qid);
+          CURRENT_CONTEXT.entityTypeId = 7;
+          CURRENT_DEAL_ID = CURRENT_CONTEXT.id;
+          logEvent("Context from URL", { mode: CURRENT_CONTEXT.mode, id: CURRENT_CONTEXT.id });
+          return true;
+        }
+
+        // optional: deal_id param as fallback
+        const did = getQueryParam("deal_id");
+        if (did) {
+          CURRENT_CONTEXT.mode = "DEAL";
+          CURRENT_CONTEXT.id = String(did);
+          CURRENT_CONTEXT.entityTypeId = 2;
+          CURRENT_DEAL_ID = CURRENT_CONTEXT.id;
+          logEvent("Context from URL", { mode: CURRENT_CONTEXT.mode, id: CURRENT_CONTEXT.id });
+          return true;
+        }
+
+        return false;
+      }
+
+      function detectContextFromBXPlacement(cb) {
+        if (!window.BX24) {
+          cb(false);
+          return;
+        }
+
+        try {
+          if (BX24.placement && BX24.placement.info) {
+            const info = BX24.placement.info();
+            if (info && info.options) {
+              let opts = info.options;
+              try { if (typeof opts === "string") opts = JSON.parse(opts); } catch (e) { opts = {}; }
+
+              const dealId =
+                opts.DEAL_ID || opts.Id || opts.ID || opts.ENTITY_ID || opts.entityId || opts.dealId;
+
+              if (dealId) {
+                const digits = String(dealId).match(/\d+/);
+                CURRENT_CONTEXT.mode = "DEAL";
+                CURRENT_CONTEXT.id = digits ? digits[0] : String(dealId);
+                CURRENT_CONTEXT.entityTypeId = 2;
+                CURRENT_DEAL_ID = CURRENT_CONTEXT.id;
+                logEvent("Context from placement.info", { mode: CURRENT_CONTEXT.mode, id: CURRENT_CONTEXT.id });
+                cb(true);
+                return;
+              }
+            }
+          }
+        } catch (e) {}
+
+        BX24.callMethod("placement.getData", {}, function (res) {
+          try {
+            if (res.error && res.error()) {
+              logEvent("placement.getData error", { err: res.error() }, "WARN");
+              cb(false);
+              return;
+            }
+            const raw = (res.data && typeof res.data === "function") ? res.data() : (res.data ? res.data : {});
+            let dealId = raw && (raw.ID || raw.DEAL_ID || raw.ENTITY_ID || raw.entityId || raw.dealId);
+
+            if (!dealId && raw && raw.PLACEMENT_OPTIONS) {
+              let opts2 = raw.PLACEMENT_OPTIONS;
+              try { if (typeof opts2 === "string") opts2 = JSON.parse(opts2); } catch (e) { opts2 = {}; }
+              dealId = opts2 && (opts2.DEAL_ID || opts2.ID || opts2.ENTITY_ID || opts2.entityId || opts2.dealId);
+            }
+
+            if (dealId) {
+              const digits = String(dealId).match(/\d+/);
+              CURRENT_CONTEXT.mode = "DEAL";
+              CURRENT_CONTEXT.id = digits ? digits[0] : String(dealId);
+              CURRENT_CONTEXT.entityTypeId = 2;
+              CURRENT_DEAL_ID = CURRENT_CONTEXT.id;
+              logEvent("Context from placement.getData", { mode: CURRENT_CONTEXT.mode, id: CURRENT_CONTEXT.id });
+              cb(true);
+              return;
+            }
+
+            cb(false);
+          } catch (e) {
+            cb(false);
+          }
+        });
+      }
+
+      function initBitrixContextUnified() {
+        // 0) URL first (needed for quotes)
+        if (detectContextFromUrlFirst()) {
+          setTagText();
+          if (APP_READY) loadEntityState();
+          return;
+        }
+
+        // 1) BX24 placement (deals)
+        if (!window.BX24) {
+          logEvent("BX24 отсутствует — работаем только по URL параметрам.", null, "WARN");
+          setTagText();
+          return;
+        }
+
+        BX24.ready(function () {
+          BX24.init(function () {
+            detectContextFromBXPlacement(function (ok) {
+              setTagText();
+              if (!ok) {
+                logEvent("Не удалось определить контекст через placement. Используй ?quote_id= или ?deal_id=", null, "WARN");
+                return;
+              }
+              if (APP_READY) loadEntityState();
+            });
+          });
+        });
+      }
+
+
+      // -------------------- LOAD / SAVE STATE --------------------
+      function loadEntityState() {
+        if (!CURRENT_CONTEXT.id) return;
+
+        // 0) Без контекста в CRM не лезем
+        if (!CURRENT_CONTEXT.mode) return;
+
+        // 1) Грузим ИЗ CRM (истина)
+        if (window.BX24) {
+          entityGet(function (err, entity) {
+            if (err) {
+              logEvent("entityGet error", { err }, "ERROR");
+              // CRM не отдал — тогда можно fallback на localStorage
+              loadStateFromLocalStorageFallback();
+              return;
+            }
+
+            const dataObj = entity || {};
+            const fieldName = getStateFieldName();
+            const rawState = dataObj ? dataObj[fieldName] : null;
+
+            logEvent("Entity loaded", {
+              mode: CURRENT_CONTEXT.mode,
+              id: CURRENT_CONTEXT.id,
+              fieldName,
+              hasState: !!rawState
+            });
+
+            // Если CRM пуст — fallback на localStorage
+            if (!rawState) {
+              loadStateFromLocalStorageFallback();
+              return;
+            }
+
+            // Если CRM то же самое что уже применяли — ничего не делаем
+            if (LAST_REMOTE_STATE_RAW === rawState && REMOTE_STATE_LOADED) {
+              return;
+            }
+
+            try {
+              const st = JSON.parse(rawState);
+              LAST_REMOTE_STATE_RAW = rawState;
+              REMOTE_STATE_LOADED = true;
+              applyAppState(st);
+              markSaved();
+            } catch (e) {
+              logEvent("Ошибка парсинга состояния из CRM", {
+                e: String(e),
+                rawStateSample: String(rawState).slice(0, 200)
+              }, "ERROR");
+              // если сломанный JSON в CRM — fallback на local
+              loadStateFromLocalStorageFallback();
+            }
+          });
+
+          return;
+        }
+
+        // 2) Если BX24 нет (например открыли не в размещении) — fallback на localStorage
+        loadStateFromLocalStorageFallback();
+      }
+
+      function loadStateFromLocalStorageFallback() {
+        try {
+          const k = getLocalStorageKey();
+          if (k && window.localStorage) {
+            const localRaw = window.localStorage.getItem(k);
+            if (localRaw) {
+              const localState = JSON.parse(localRaw);
+              applyAppState(localState);
+              logEvent("State loaded from localStorage FALLBACK", { key: k });
+              return;
+            }
+          }
+        } catch (e) {}
+
+        // если вообще ничего нет
+        applyAppState({ lines: [] });
+      }
+
+
+      async function saveCurrentEntityState() {
         recalcAll();
 
         const sumTotal = lines.reduce((acc, l) => acc + (Number(l.total) || 0), 0);
         const state = getAppStateForSave();
 
-        // Локальное сохранение в браузер — всегда, если есть ID сделки
-        if (CURRENT_DEAL_ID && window.localStorage) {
-          try {
-            const key = LOCAL_STATE_PREFIX + CURRENT_DEAL_ID;
-            window.localStorage.setItem(key, JSON.stringify(state));
-          } catch (e) {
-            console.warn("Ошибка сохранения состояния в localStorage:", e);
+        // localStorage всегда
+        try {
+          const k = getLocalStorageKey();
+          if (k && window.localStorage) window.localStorage.setItem(k, JSON.stringify(state));
+        } catch (e) {}
+
+        // если контекст не определился — ручной ввод
+        if (!CURRENT_CONTEXT.mode || !CURRENT_CONTEXT.id) {
+          let manual = window.prompt("Не удалось определить контекст.\nВведите: DEAL:123 или QUOTE:61");
+          if (!manual) {
+            showToast("Без ID сохранить в CRM нельзя.", "error");
+            return;
           }
+          manual = String(manual).trim().toUpperCase();
+          const m = manual.match(/^(DEAL|QUOTE)\s*:\s*(\d+)$/);
+          if (!m) {
+            showToast("Неверный формат. Пример: DEAL:123 или QUOTE:61", "error");
+            return;
+          }
+          CURRENT_CONTEXT.mode = m[1];
+          CURRENT_CONTEXT.id = m[2];
+          CURRENT_DEAL_ID = CURRENT_CONTEXT.id;
+          setTagText();
         }
 
-        // Если вообще нет BX24 — можем только локально
+        // 1) Пытаемся сохранить через backend (работает и для предложений)
+        try {
+          const resp = await fetch("/api/bx/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              mode: CURRENT_CONTEXT.mode,  // "DEAL" | "QUOTE"
+              id: String(CURRENT_CONTEXT.id),
+              sumTotal,
+              state,
+            }),
+          });
+
+          const data = await resp.json().catch(() => ({}));
+
+          if (!resp.ok || data.ok === false) {
+            throw new Error(data.error || ("HTTP " + resp.status));
+          }
+
+          showToast(
+            (CURRENT_CONTEXT.mode === "QUOTE" ? "Сохранено в предложении #" : "Сохранено в сделке #") + CURRENT_CONTEXT.id,
+            "success"
+          );
+          
+          markSaved();
+          LAST_REMOTE_STATE_RAW = JSON.stringify(state);
+          REMOTE_STATE_LOADED = true;
+          loadEntityState();
+          return;
+        } catch (e) {
+          console.error("Backend save failed:", e);
+          // не выходим — попробуем BX24 как fallback для сделок
+        }
+
+        // 2) fallback: BX24 (обычно работает в сделках, но не в предложениях)
         if (!window.BX24) {
-          showToast("Bitrix24 SDK недоступен. Данные сохранены только локально в браузере.", "error");
-          console.log("sumTotal:", sumTotal, "state:", state);
+          showToast("Нет Bitrix24 SDK. Backend-сохранение тоже не сработало — см. консоль.", "error", true);
           return;
         }
 
-        // Если BX24 есть, но ID сделки не определён — спросим вручную
-        if (!CURRENT_DEAL_ID) {
-          const manual = window.prompt(
-            "Не удалось автоматически определить ID сделки.\n" +
-            "Введите ID сделки вручную (число, как в URL сделки):"
-          );
-          if (!manual) {
-            showToast("Без ID сделки сохранить данные в CRM нельзя. Данные остались только локально.", "error");
+        // если BX24 доступен — можно оставить старую логику
+        const fields = {};
+        fields[getStateFieldName()] = JSON.stringify(state);
+
+        if (CURRENT_CONTEXT.mode === "QUOTE") {
+          // В QUOTE лучше вообще не попадать сюда (обычно BX24 нет)
+          fields["opportunity"] = sumTotal;
+        } else {
+          fields.OPPORTUNITY = sumTotal;
+        }
+
+        entityUpdate(fields, function (err) {
+          if (err) {
+            const msg = (typeof err === "string") ? err : (err.error_description || err.error || err.message || JSON.stringify(err));
+            showToast("Ошибка сохранения: " + msg, "error");
             return;
           }
-          const digits = String(manual).match(/\d+/);
-          CURRENT_DEAL_ID = digits ? digits[0] : String(manual);
-
-          const tagEl = document.getElementById("tag-deal-info");
-          if (tagEl) tagEl.textContent = "Сделка: " + CURRENT_DEAL_ID;
-        }
-
-        // Готовим поля для crm.deal.update
-        const fields = {
-          OPPORTUNITY: sumTotal
-        };
-        fields[DEAL_STATE_FIELD] = JSON.stringify(state);
-
-        BX24.callMethod(
-          "crm.deal.update",
-          { id: CURRENT_DEAL_ID, fields },
-          function(res) {
-            if (res.error()) {
-              console.error("crm.deal.update error:", res.error());
-              showToast("Ошибка сохранения сделки: " + res.error(), "error");
-              return;
-            }
-
-            // Можно, но необязательно, подтянуть сделку и ещё раз применить состояние
-            BX24.callMethod("crm.deal.get", { id: CURRENT_DEAL_ID }, function(res2) {
-              if (!res2.error()) {
-                try {
-                  const deal = res2.data && res2.data() ? res2.data() : res2.data || {};
-                  const rawState = deal[DEAL_STATE_FIELD];
-                  if (rawState) {
-                    const st = JSON.parse(rawState);
-                    applyAppState(st);
-                  }
-                } catch (e) {
-                  console.warn("Ошибка повторного применения состояния:", e);
-                }
-              }
-
-              showToast("Сумма и состояние сохранены в сделку #" + CURRENT_DEAL_ID, "success");
-              markSaved();
-            });
-          }
-        );
-      });
-
-      document.addEventListener("visibilitychange", () => {
-        if (suppressUnsavedToast) return;
-        if (document.hidden && hasUnsavedChanges) {
-          showToast("Есть несохранённые изменения. Если уйдёте — они могут не сохраниться.", "error", true);
-        }
-      });
-
-      window.addEventListener("beforeunload", (e) => {
-        if (!hasUnsavedChanges) return;
-        e.preventDefault();
-        e.returnValue = "";
-      });
-
-      window.addEventListener("blur", () => {
-        if (suppressUnsavedToast) return;
-        if (hasUnsavedChanges) {
-          showToast("Есть несохранённые изменения — не забудьте сохранить.", "error", true);
-        }
-      });
-
-
-      const cbSelectAll = document.getElementById("cb-select-all");
-      if (cbSelectAll) {
-        cbSelectAll.addEventListener("change", () => {
-          const checked = cbSelectAll.checked;
-          lines.forEach(l => { l.selected = checked; });
-          recalcAll();
-          renderLines();
+          showToast("Сохранено (BX24) #" + CURRENT_CONTEXT.id, "success");
+          markSaved();
+          loadEntityState();
         });
       }
 
-      initApp();
-      initBitrixContext();
-    });
-  </script>
-</body>
+      function collectTotalsForDocs() {
+        let base = 0;
+        let discount = 0;
+        let noVat = 0;
+        let vat = 0;
+        let total = 0;
+
+        lines.forEach(l => {
+          const price = Number(l.price) || 0;
+          const qty = Number(l.quantity) || 0;
+          const discountPercent = Number(l.discountPercent) || 0;
+          const vatPercent = Number(l.vatPercent) || 0;
+
+          const lineBase = price * qty;
+          const lineDiscount = lineBase * (discountPercent / 100);
+          const baseAfterDiscount = lineBase - lineDiscount;
+          const lineVat = baseAfterDiscount * (vatPercent / 100);
+          const lineTotal = baseAfterDiscount + lineVat;
+
+          base += lineBase;
+          discount += lineDiscount;
+          noVat += baseAfterDiscount;
+          vat += lineVat;
+          total += lineTotal;
+        });
+
+        return { base, discount, no_vat: noVat, vat, total };
+      }
+
+      async function generateDocument() {
+        // пересчёт
+        recalcAll();
+
+        const variantInput = document.querySelector('input[name="doc-variant"]:checked');
+        if (!variantInput) {
+          showToast("Выберите вариант документа", "error");
+          return;
+        }
+
+        const formatInput = document.querySelector('input[name="doc-format"]:checked');
+        const format = formatInput ? formatInput.value : "pdf";
+        const variant = variantInput.value;
+
+        const state = getAppStateForSave();
+        const totals = collectTotalsForDocs();
+
+        // CURRENT_DEAL_ID у тебя используется и для сделки и для предложения (в QUOTE ты его приравниваешь к id)
+        const entityIdForDoc = CURRENT_DEAL_ID;
+
+        try {
+          const entityIdForDoc = String(CURRENT_CONTEXT.id || CURRENT_DEAL_ID || "");
+
+          const payload = {
+            mode: CURRENT_CONTEXT.mode,      // "DEAL" | "QUOTE"
+            entity_id: entityIdForDoc,       // id сделки или предложения
+            variant,
+            format,
+            lines: state.lines,
+            totals,
+          };
+
+          // для старого бэка (если вдруг где-то ещё ожидается deal_id)
+          if (CURRENT_CONTEXT.mode === "DEAL") {
+            payload.deal_id = entityIdForDoc;
+          }
+
+          const res = await fetch(apiBase + "/api/docs/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              variant,
+              format,
+              mode: CURRENT_CONTEXT.mode,
+              entity_id: CURRENT_CONTEXT.id,
+              lines: state.lines,
+              totals
+            })
+          });
+
+          if (!res.ok) {
+            showToast("Ошибка генерации документа", "error");
+            return;
+          }
+
+          const blob = await res.blob();
+          const url = window.URL.createObjectURL(blob);
+
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = (format === "docx")
+            ? "komercheskoe_predlozhenie.docx"
+            : "komercheskoe_predlozhenie.pdf";
+
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+
+          // ревок лучше делать с небольшой задержкой, чтобы браузер успел стартануть загрузку
+          setTimeout(() => window.URL.revokeObjectURL(url), 1500);
+
+          showToast("Документ сформирован", "success");
+        } catch (e) {
+          console.error(e);
+          showToast("Ошибка сети при генерации документа", "error");
+        }
+      }
+
+
+      // -------------------- PRODUCT DROPDOWN --------------------
+      function openProductDropdown(inputEl, line) {
+        productDropdownMode = "line";
+        currentProductInput = inputEl;
+        currentProductLine = line;
+        pmAddAnchorEl = null;
+
+        if (!productDropdownEl) return;
+
+        const rect = inputEl.getBoundingClientRect();
+        const top = rect.bottom + window.scrollY;
+        const left = rect.left + window.scrollX;
+
+        const extraWidth = 40;
+        productDropdownEl.style.width = (rect.width + extraWidth) + "px";
+        productDropdownEl.style.left = left + "px";
+        productDropdownEl.style.top = top + "px";
+
+        productSearchInputEl.value = "";
+        renderProductDropdownList("");
+
+        ensurePriceListProductIds(line.priceListId).then(() => {
+          renderProductDropdownList(productSearchInputEl.value || "");
+        });
+
+        productDropdownEl.style.display = "block";
+        productDropdownEl.classList.add("visible");
+        setTimeout(() => productSearchInputEl.focus(), 10);
+      }
+
+      function closeProductDropdown() {
+        if (!productDropdownEl) return;
+        productDropdownEl.classList.remove("visible");
+        productDropdownEl.style.display = "none";
+        currentProductLine = null;
+        currentProductInput = null;
+        pmAddAnchorEl = null;
+      }
+
+      // Price manager (kept from your code, but only minimal required hooks here)
+      let pmItems = [];
+      let pmItemsDirty = false;
+      let pmItemsSearchTerm = "";
+      let pmSelectedId = null;
+      let pmSearchTerm = "";
+
+      function getProductBasePrice(p) {
+        const raw =
+          p?.price ??
+          p?.PRICE ??
+          p?.base_price ??
+          p?.BASE_PRICE ??
+          p?.default_price ??
+          0;
+        return toNumberMoney(raw);
+      }
+
+      function renderProductDropdownList(filterText = "") {
+        if (!productDropdownListEl) return;
+        productDropdownListEl.innerHTML = "";
+
+        const q = filterText.toLowerCase().trim();
+
+        const filtered = PRODUCTS.filter(p => {
+          if (!q) return true;
+          const name = (p.name || "").toLowerCase();
+          const desc = (p.description || "").toLowerCase();
+          return name.includes(q) || desc.includes(q);
+        });
+
+        filtered.forEach(p => {
+          const row = document.createElement("div");
+          row.className = "product-row";
+
+          const nameEl = document.createElement("div");
+          nameEl.className = "product-row-name";
+          nameEl.textContent = p.name || "(без названия)";
+
+          const metaEl = document.createElement("div");
+          metaEl.className = "product-row-meta";
+          const price = Number(p.price) || 0;
+          const currency = p.currency_id || "RUB";
+          const priceText = price ? `${formatMoney(price)} ${currency}` : "цена не указана";
+          const desc = (p.description || "").replace(/\s+/g, " ");
+          metaEl.textContent = desc ? `${priceText} • ${desc}` : priceText;
+
+          row.appendChild(nameEl);
+          row.appendChild(metaEl);
+
+          // mark products not in selected price list
+          if (productDropdownMode === "line" && currentProductLine?.priceListId) {
+            const plKey = String(currentProductLine.priceListId);
+            const set = PRICE_LIST_PRODUCT_IDS_CACHE.get(plKey);
+            if (set && !set.has(String(p.id))) row.classList.add("not-in-price");
+          }
+
+          row.addEventListener("click", async (e) => {
+            e.stopPropagation();
+
+            if (productDropdownMode === "pm_add") {
+              const exists = pmItems.some(it => String(it.product_id) === String(p.id));
+              if (exists) {
+                showToast("Этот товар уже есть в прайс-листе", "error");
+                closeProductDropdown();
+                return;
+              }
+
+              const basePrice = getProductBasePrice(p);
+              pmItems.push({
+                product_id: p.id,
+                product_name: p.name || "",
+                product_description: p.description || "",
+                price: basePrice,
+                selected: false
+              });
+              pmItemsDirty = true;
+              closeProductDropdown();
+              // renderPriceItemsTable(); // if you have it
+              return;
+            }
+
+            if (productDropdownMode === "line" && currentProductLine?.priceListId) {
+              const plId = String(currentProductLine.priceListId);
+              const set = PRICE_LIST_PRODUCT_IDS_CACHE.get(plId);
+              if (set && !set.has(String(p.id))) {
+                showToast("Товар отсутствует в выбранном прайс-листе. Цена будет 0 — укажите вручную.", "error");
+              }
+            }
+
+            if (!currentProductLine || !currentProductInput) return;
+
+            currentProductLine.productId = p.id;
+            currentProductLine.productName = p.name || "";
+            currentProductInput.value = p.name || "";
+
+            const lineRef = currentProductLine;
+            closeProductDropdown();
+            await autoUpdatePriceAndRecalc(lineRef);
+            markDirty();
+          });
+
+          productDropdownListEl.appendChild(row);
+        });
+      }
+
+      // -------------------- RENDER TABLE --------------------
+      function renderLines() {
+        const tbody = document.getElementById("lines-tbody");
+        if (!tbody) return;
+        tbody.innerHTML = "";
+
+        lines.forEach((line, index) => {
+          const tr = document.createElement("tr");
+          if (line.selected) tr.classList.add("selected");
+
+          // index
+          const tdIndex = document.createElement("td");
+          tdIndex.className = "col-index";
+          tdIndex.textContent = index + 1;
+          tr.appendChild(tdIndex);
+
+          // checkbox
+          const tdCheckbox = document.createElement("td");
+          tdCheckbox.className = "col-checkbox";
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = line.selected;
+          cb.addEventListener("change", () => {
+            line.selected = cb.checked;
+            renderLines();
+          });
+          tdCheckbox.appendChild(cb);
+          tr.appendChild(tdCheckbox);
+
+          // product
+          const tdProduct = document.createElement("td");
+          tdProduct.className = "col-product";
+          const inputProduct = document.createElement("input");
+          inputProduct.type = "text";
+          inputProduct.placeholder = "— выбрать товар —";
+          inputProduct.value = line.productName || "";
+
+          inputProduct.addEventListener("focus", () => openProductDropdown(inputProduct, line));
+          inputProduct.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openProductDropdown(inputProduct, line);
+          });
+
+          inputProduct.addEventListener("input", () => {
+            line.productName = inputProduct.value;
+            markDirty();
+          });
+
+          tdProduct.appendChild(inputProduct);
+          tr.appendChild(tdProduct);
+
+          // price list
+          const tdPriceList = document.createElement("td");
+          tdPriceList.className = "col-price-list";
+          const selectPriceList = document.createElement("select");
+
+          PRICE_LISTS.forEach(pl => {
+            const opt = document.createElement("option");
+            opt.value = String(pl.id);
+            opt.textContent = pl.name;
+            if (String(pl.id) === String(line.priceListId)) opt.selected = true;
+            selectPriceList.appendChild(opt);
+          });
+
+          selectPriceList.addEventListener("change", async () => {
+            line.priceListId = selectPriceList.value;
+
+            const set = await ensurePriceListProductIds(line.priceListId);
+
+            if (line.productId) {
+              const pid = String(line.productId);
+              if (set && !set.has(pid)) {
+                line.price = 0;
+                line.missingInPriceList = true;
+                recalcLine(line);
+                updateSummary();
+                markDirty();
+                renderLines();
+                return;
+              }
+              await autoUpdatePriceAndRecalc(line);
+            }
+
+            markDirty();
+          });
+
+          tdPriceList.appendChild(selectPriceList);
+
+          if (line.productId && line.missingInPriceList) {
+            const w = document.createElement("span");
+            w.className = "warn-icon";
+            w.textContent = "!";
+            w.title = "Товар отсутствует в выбранном прайс-листе. Укажите цену вручную.";
+            tdPriceList.appendChild(w);
+          }
+
+          tr.appendChild(tdPriceList);
+
+          // price
+          const tdPrice = document.createElement("td");
+          tdPrice.className = "col-price";
+          const inputPrice = document.createElement("input");
+          inputPrice.type = "text";
+          inputPrice.value = formatMoney(line.price || 0);
+
+          inputPrice.addEventListener("focus", () => {
+            const num = Number(line.price) || 0;
+            inputPrice.value = num.toString().replace(".", ",");
+          });
+
+          // total cell created later, but we need reference
+          const tdTotal = document.createElement("td");
+          tdTotal.className = "col-total";
+          tdTotal.textContent = formatMoney(line.total);
+
+          inputPrice.addEventListener("blur", () => {
+            let raw = inputPrice.value || "";
+            raw = raw.replace(/\s+/g, "").replace(",", ".");
+            let num = Number(raw);
+            if (isNaN(num)) num = 0;
+
+            line.price = num;
+            recalcLine(line);
+            updateSummary();
+            markDirty();
+
+            inputPrice.value = formatMoney(line.price);
+            tdTotal.textContent = formatMoney(line.total);
+          });
+
+          tdPrice.appendChild(inputPrice);
+          tr.appendChild(tdPrice);
+
+          // qty
+          const tdQty = document.createElement("td");
+          tdQty.className = "col-qty";
+          const qtyWrapper = document.createElement("div");
+          qtyWrapper.className = "input-qty-wrapper";
+          const inputQty = document.createElement("input");
+          inputQty.type = "number";
+          inputQty.min = "0";
+          inputQty.step = "1";
+          inputQty.value = line.quantity;
+
+          inputQty.addEventListener("input", () => {
+            line.quantity = Number(inputQty.value) || 0;
+            recalcLine(line);
+            updateSummary();
+            markDirty();
+            tdTotal.textContent = formatMoney(line.total);
+          });
+
+          const unitSpan = document.createElement("span");
+          unitSpan.className = "unit-label";
+          unitSpan.textContent = "шт";
+
+          qtyWrapper.appendChild(inputQty);
+          qtyWrapper.appendChild(unitSpan);
+          tdQty.appendChild(qtyWrapper);
+          tr.appendChild(tdQty);
+
+          // discount
+          const tdDiscount = document.createElement("td");
+          tdDiscount.className = "col-discount";
+          const inputDiscount = document.createElement("input");
+          inputDiscount.type = "number";
+          inputDiscount.min = "0";
+          inputDiscount.max = "100";
+          inputDiscount.step = "1";
+          inputDiscount.value = line.discountPercent;
+
+          inputDiscount.addEventListener("input", () => {
+            line.discountPercent = Number(inputDiscount.value) || 0;
+            recalcLine(line);
+            updateSummary();
+            markDirty();
+            tdTotal.textContent = formatMoney(line.total);
+          });
+
+          tdDiscount.appendChild(inputDiscount);
+          tr.appendChild(tdDiscount);
+
+          // vat
+          const tdVat = document.createElement("td");
+          tdVat.className = "col-vat";
+          const selectVat = document.createElement("select");
+          VAT_RATES.forEach(rate => {
+            const opt = document.createElement("option");
+            opt.value = rate;
+            opt.textContent = rate === 0 ? "0 %" : rate + " %";
+            if (rate === line.vatPercent) opt.selected = true;
+            selectVat.appendChild(opt);
+          });
+
+          selectVat.addEventListener("change", () => {
+            line.vatPercent = Number(selectVat.value) || 0;
+            recalcLine(line);
+            updateSummary();
+            markDirty();
+            tdTotal.textContent = formatMoney(line.total);
+          });
+
+          tdVat.appendChild(selectVat);
+          tr.appendChild(tdVat);
+
+          // total
+          tr.appendChild(tdTotal);
+
+          tbody.appendChild(tr);
+        });
+
+        const anySelected = lines.some(l => l.selected);
+        const btnDel = document.getElementById("btn-delete-selected");
+        if (btnDel) btnDel.disabled = !anySelected;
+      }
+
+      // -------------------- INIT APP --------------------
+      async function initApp() {
+        clearError();
+        try {
+          await Promise.all([fetchProducts(), fetchPriceLists()]);
+          if (lines.length === 0) lines.push(createEmptyLine());
+          recalcAll();
+          renderLines();
+        } catch (e) {
+          logEvent("initApp error", { e: String(e) }, "ERROR");
+          showError("Ошибка инициализации: " + (e.message || e));
+        } finally {
+          APP_READY = true;
+          loadEntityState();
+        }
+      }
+
+      // -------------------- DOM READY --------------------
+      document.addEventListener("DOMContentLoaded", () => {
+        productDropdownEl = document.getElementById("product-dropdown");
+        productDropdownListEl = document.getElementById("product-dropdown-list");
+        productSearchInputEl = document.getElementById("product-search-input");
+
+        logEvent("DOMContentLoaded start", {
+          hasBX24: !!window.BX24,
+          href: location.href,
+          ctx: CURRENT_CONTEXT
+        });
+        if (productSearchInputEl) {
+          productSearchInputEl.addEventListener("input", () => {
+            renderProductDropdownList(productSearchInputEl.value);
+          });
+        }
+
+        // click outside closes dropdown
+        document.addEventListener("click", (e) => {
+          const toast = document.querySelector(".toast.persistent");
+          if (toast) {
+            toast.classList.remove("visible");
+            setTimeout(() => toast.remove(), 200);
+          }
+
+          if (!productDropdownEl) return;
+          if (!productDropdownEl.classList.contains("visible")) return;
+
+          const clickedOnLineInput = (currentProductInput && e.target === currentProductInput);
+          const clickedOnPmAddBtn = (pmAddAnchorEl && (e.target === pmAddAnchorEl || pmAddAnchorEl.contains(e.target)));
+
+          if (!productDropdownEl.contains(e.target) && !clickedOnLineInput && !clickedOnPmAddBtn) {
+            closeProductDropdown();
+          }
+        });
+
+        // buttons
+        const btnAdd = document.getElementById("btn-add-row");
+        if (btnAdd) {
+          btnAdd.addEventListener("click", () => {
+            const line = createEmptyLine();
+            lines.push(line);
+            markDirty();
+            recalcAll();
+            renderLines();
+          });
+        }
+
+        const btnDeleteSelected = document.getElementById("btn-delete-selected");
+        if (btnDeleteSelected) {
+          btnDeleteSelected.addEventListener("click", () => {
+            lines = lines.filter(l => !l.selected);
+            if (lines.length === 0) lines.push(createEmptyLine());
+            markDirty();
+            recalcAll();
+            renderLines();
+          });
+        }
+
+        const btnRecalcSelected = document.getElementById("btn-recalc-selected");
+        if (btnRecalcSelected) {
+          btnRecalcSelected.addEventListener("click", async () => {
+            for (const line of lines) {
+              if (!line.selected) continue;
+              await fetchPriceForLine(line);
+              recalcLine(line);
+            }
+            updateSummary();
+            renderLines();
+          });
+        }
+
+        const btnGenerateDoc = document.getElementById("btn-generate-doc");
+        if (btnGenerateDoc) btnGenerateDoc.addEventListener("click", generateDocument);
+
+        const btnSave = document.getElementById("btn-save");
+        if (btnSave) btnSave.addEventListener("click", saveCurrentEntityState);
+
+        const btnCancel = document.getElementById("btn-cancel");
+        if (btnCancel) {
+          btnCancel.addEventListener("click", () => {
+            if (window.BX24 && BX24.closeApplication) BX24.closeApplication();
+            else showToast("Отмена. Просто закройте вкладку.", "error");
+          });
+        }
+
+        // unsaved guards
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) {
+            // вернулись на вкладку — подтянем из CRM свежак
+            loadEntityState();
+          }
+          if (suppressUnsavedToast) return;
+          if (document.hidden && hasUnsavedChanges) {
+            showToast("Есть несохранённые изменения. Если уйдёте — они могут не сохраниться.", "error", true);
+          }
+          setInterval(() => {
+            if (!CURRENT_CONTEXT.id || !CURRENT_CONTEXT.mode) return;
+            if (hasUnsavedChanges) return; // не перетирать локальные правки
+            loadEntityState();
+          }, 15000);
+        });
+
+        window.addEventListener("error", (e) => {
+          try {
+            const info = {
+              message: e.message,
+              source: e.filename,
+              line: e.lineno,
+              col: e.colno,
+              stack: e.error && e.error.stack ? String(e.error.stack) : null
+            };
+            logEvent("window.error", info, "ERROR");
+          } catch (_) {}
+        });
+
+        window.addEventListener("unhandledrejection", (e) => {
+          try {
+            const reason = e.reason;
+            logEvent("unhandledrejection", {
+              reason: (reason && reason.message) ? reason.message : String(reason),
+              stack: reason && reason.stack ? String(reason.stack) : null
+            }, "ERROR");
+          } catch (_) {}
+        });
+
+        window.addEventListener("beforeunload", (e) => {
+          if (!hasUnsavedChanges) return;
+          e.preventDefault();
+          e.returnValue = "";
+        });
+
+        window.addEventListener("blur", () => {
+          if (suppressUnsavedToast) return;
+          if (hasUnsavedChanges) showToast("Есть несохранённые изменения — не забудьте сохранить.", "error", true);
+        });
+
+        const cbSelectAll = document.getElementById("cb-select-all");
+        if (cbSelectAll) {
+          cbSelectAll.addEventListener("change", () => {
+            const checked = cbSelectAll.checked;
+            lines.forEach(l => { l.selected = checked; });
+            recalcAll();
+            renderLines();
+          });
+        }
+
+        (function(){
+          function setAppHeight(){
+            // innerHeight is what we actually have inside iframe
+            document.documentElement.style.setProperty('--appH', window.innerHeight + 'px');
+          }
+          window.addEventListener('resize', setAppHeight, { passive: true });
+          window.addEventListener('orientationchange', setAppHeight, { passive: true });
+          setAppHeight();
+        })();
+
+        // GO
+        initApp();
+        initBitrixContextUnified();
+      });
+
+    })();
+    </script>
+  </body>
 </html>

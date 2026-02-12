@@ -1,15 +1,25 @@
+# app/api/docs.py
 import os
-from flask import Blueprint, request, jsonify, send_file, current_app
+from flask import Blueprint, request, send_file, current_app
 from io import BytesIO
-from datetime import datetime, date, timedelta
+from datetime import date
+
 from app.services.bitrix_api import fetch_deal_with_extras
 from app.docgen import build_pdf_from_template, format_money
 from app.database import db
 from app.models.proposal_counter import ProposalCounter
 from app.docgen_docx import build_docx_for_variant
-from app.services.bitrix_disk_service import save_kp_and_write_link, upload_docx_to_deal_file_field
 
-
+from app.services.bitrix_disk_service import (
+    upload_docx_to_disk_replace,
+    get_disk_file_detail_url,
+    set_deal_kp_link,
+    upload_docx_to_deal_file_field,
+    set_quote_kp_link,
+    upload_docx_to_quote_file_field,
+    _sanitize_filename,
+    KP_FOLDER_ID,
+)
 
 
 bp = Blueprint("docs", __name__, url_prefix="/api/docs")
@@ -72,6 +82,7 @@ def _calc_totals(lines, totals_from_client=None):
         "total_fmt": _format_money(total),
     }
 
+
 def add_months(d: date, months: int) -> date:
     """
     Аккуратно добавляем N месяцев к дате, чтобы не улететь за пределы месяца.
@@ -80,18 +91,19 @@ def add_months(d: date, months: int) -> date:
     year = d.year + month // 12
     month = month % 12 + 1
 
-    # количество дней в месяце
-    days_in_month = [31,
-                     29 if (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)) else 28,
-                     31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+    days_in_month = [
+        31,
+        29 if (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)) else 28,
+        31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+    ][month - 1]
     day = min(d.day, days_in_month)
     return date(year, month, day)
 
+
 def get_next_offer_number_for_company(company_id: str | None) -> int | None:
     """
-    Возвращает следующий номер предложения для данной компании.
-    company_id — это ID компании из Bitrix (строкой).
-    Если company_id нет, вернём None и дальше можно fallback-нуть к deal_id.
+    Счётчик КП по компании (если захочешь использовать).
+    Сейчас не используется в имени файла, оставлено как у тебя.
     """
     if not company_id:
         return None
@@ -106,14 +118,35 @@ def get_next_offer_number_for_company(company_id: str | None) -> int | None:
     db.session.commit()
     return pc.counter
 
+
+def _safe_name_part(s: str, max_len: int) -> str:
+    s = (s or "").strip()
+    if not s:
+        return ""
+    safe = "".join(ch if ch.isalnum() or ch in (" ", "_", "-", ".") else "_" for ch in s)
+    safe = " ".join(safe.split()).strip()
+    return safe[:max_len]
+
+
 @bp.post("/generate")
 def generate():
     data = request.get_json() or {}
+
     variant = data.get("variant") or "kp_tp_discount"
     out_format = (data.get("format") or "pdf").lower()
-    deal_id = data.get("deal_id")
-    lines = data.get("lines") or []
 
+    # ✅ новый универсальный формат:
+    # mode: "DEAL"|"QUOTE", entity_id: "123"
+    # (для совместимости оставляем deal_id)
+    mode = (data.get("mode") or "DEAL").upper().strip()
+    entity_id = data.get("entity_id") or data.get("deal_id") or 0
+
+    try:
+        entity_id_int = int(entity_id)
+    except Exception:
+        entity_id_int = 0
+
+    lines = data.get("lines") or []
     totals_from_client = data.get("totals")
     totals = _calc_totals(lines, totals_from_client)
 
@@ -135,10 +168,10 @@ def generate():
 
     today = date.today()
 
-    if deal_id:
+    # --------- extras (только для сделок) ----------
+    if entity_id_int and mode == "DEAL":
         try:
-            deal_id_int = int(deal_id)
-            extra = fetch_deal_with_extras(deal_id_int)
+            extra = fetch_deal_with_extras(entity_id_int)
 
             context["deal_company"] = extra.get("deal_company") or None
             context["contact_name"] = extra.get("contact_name") or None
@@ -147,15 +180,19 @@ def generate():
             context["manager_email"] = extra.get("manager_email") or None
             context["manager_phone"] = extra.get("manager_phone") or None
 
-            # Дата КП = дата формирования документа
             context["offer_date"] = today.strftime("%d.%m.%Y")
 
             deal_title = (extra.get("deal_title") or "").strip()
-            context["offer_number"] = deal_title if deal_title else str(deal_id_int)
-
+            context["offer_number"] = deal_title if deal_title else str(entity_id_int)
 
         except Exception:
-            current_app.logger.exception("Bitrix error for deal %s", deal_id)
+            current_app.logger.exception("Bitrix error for deal %s", entity_id_int)
+
+    # --------- если QUOTE: хотя бы базовые значения ----------
+    if entity_id_int and mode == "QUOTE":
+        context["offer_date"] = today.strftime("%d.%m.%Y")
+        # номер берём из id (если нужно иначе — можно подтянуть crm.item.get отдельно)
+        context["offer_number"] = str(entity_id_int)
 
     # страховки
     if not context.get("offer_date"):
@@ -164,15 +201,15 @@ def generate():
     if not context.get("valid_until"):
         context["valid_until"] = add_months(today, 3).strftime("%d.%m.%Y")
 
-    for key, default in [
-        ("deal_company", "Контрагент"),
-        ("offer_number", "—"),
-        ("contact_name", "ФИО контакта"),
-        ("contact_email", "email контакта"),
-        ("offer_date", "Дата составления КП"),
-        ("manager_name", "Ответственный за сделку"),
-        ("manager_email", "email ответственного за сделку"),
-        ("manager_phone", "телефон ответственного за сделку"),
+    for key in [
+        "deal_company",
+        "offer_number",
+        "contact_name",
+        "contact_email",
+        "offer_date",
+        "manager_name",
+        "manager_email",
+        "manager_phone",
     ]:
         context.setdefault(key, None)
 
@@ -190,49 +227,78 @@ def generate():
     else:
         template_name = "docs/kp_tp_discount.html"
 
+    # ================= DOCX =================
     if out_format == "docx":
         docx_bytes = build_docx_for_variant(variant, context)
 
-        # deal_id приходит из фронта в data
-        try:
-            deal_id_int = int(data.get("deal_id") or 0)
-        except Exception:
-            deal_id_int = 0
+        # приятное имя файла
+        offer_no = _safe_name_part(context.get("offer_number") or "", 40)
+        deal_company = _safe_name_part(context.get("deal_company") or "", 60)
 
-        if deal_id_int:
-            # сделаем имя файла чуть приятнее
-            offer_no = (context.get("offer_number") or "").strip()
-            deal_company = (context.get("deal_company") or "").strip()
-
-            # безопасное имя (без / \ : и т.п.)
-            safe_company = "".join(ch if ch.isalnum() or ch in (" ", "_", "-", ".") else "_" for ch in deal_company)[:60].strip()
-            safe_offer = "".join(ch if ch.isalnum() or ch in (" ", "_", "-", ".") else "_" for ch in offer_no)[:40].strip()
-
-            if safe_company and safe_offer:
-                filename = f"КП_{safe_company}_№{safe_offer}_сделка_{deal_id_int}.docx"
-            elif safe_company:
-                filename = f"КП_{safe_company}_сделка_{deal_id_int}.docx"
+        if mode == "DEAL":
+            if deal_company and offer_no:
+                filename = f"КП_{deal_company}_№{offer_no}_сделка_{entity_id_int}.docx"
+            elif deal_company:
+                filename = f"КП_{deal_company}_сделка_{entity_id_int}.docx"
             else:
-                filename = f"КП_сделка_{deal_id_int}.docx"
+                filename = f"КП_сделка_{entity_id_int}.docx"
+        else:
+            # QUOTE
+            if deal_company and offer_no:
+                filename = f"КП_{deal_company}_№{offer_no}_предложение_{entity_id_int}.docx"
+            elif deal_company:
+                filename = f"КП_{deal_company}_предложение_{entity_id_int}.docx"
+            else:
+                filename = f"КП_предложение_{entity_id_int}.docx"
 
+        filename = _sanitize_filename(filename)
+
+        # --- загрузка в диск с replace по имени ---
+        if entity_id_int and mode in ("DEAL", "QUOTE"):
             try:
-                info = save_kp_and_write_link(deal_id=deal_id_int, filename=filename, content=docx_bytes)
-                current_app.logger.info("KP saved to Disk: %s", info)
-            except Exception:
-                current_app.logger.exception("save_kp_and_write_link failed (deal_id=%s)", deal_id_int)
+                file_id = upload_docx_to_disk_replace(KP_FOLDER_ID, filename, docx_bytes)
+                file_url = get_disk_file_detail_url(file_id)
 
+                current_app.logger.info("KP saved to Disk (replace-by-name): file_id=%s url=%s", file_id, file_url)
 
-            # 3) ВТОРОЙ ВАРИАНТ: загрузить этот же docx в поле типа "Файл" сделки
-            try:
-                upload_docx_to_deal_file_field(
-                    deal_id=deal_id_int,
-                    field_code="UF_CRM_1768830570994",
-                    filename=filename,
-                    content=docx_bytes
-                )
-                current_app.logger.info("KP uploaded to deal file field UF_CRM_1768830570994 (deal_id=%s)", deal_id_int)
+                if mode == "DEAL":
+                    # ссылка в сделку
+                    try:
+                        set_deal_kp_link(entity_id_int, file_url)
+                    except Exception:
+                        current_app.logger.exception("Failed to write KP link into DEAL (id=%s)", entity_id_int)
+
+                    # файл в поле сделки (как было)
+                    try:
+                        upload_docx_to_deal_file_field(
+                            deal_id=entity_id_int,
+                            field_code="UF_CRM_1768830570994",
+                            filename=filename,
+                            content=docx_bytes
+                        )
+                        current_app.logger.info("KP uploaded to DEAL file field UF_CRM_1768830570994 (deal_id=%s)", entity_id_int)
+                    except Exception:
+                        current_app.logger.exception("Failed to upload KP into DEAL file field UF_CRM_1768830570994 (deal_id=%s)", entity_id_int)
+
+                else:
+                    # QUOTE: ссылка + файл в поля предложения
+                    try:
+                        set_quote_kp_link(entity_id_int, file_url)
+                    except Exception:
+                        current_app.logger.exception("Failed to write KP link into QUOTE (id=%s)", entity_id_int)
+
+                    try:
+                        upload_docx_to_quote_file_field(
+                            quote_id=entity_id_int,
+                            filename=filename,
+                            content=docx_bytes
+                        )
+                        current_app.logger.info("KP uploaded to QUOTE file field ufCrm_697C815A39C78 (quote_id=%s)", entity_id_int)
+                    except Exception:
+                        current_app.logger.exception("Failed to upload KP into QUOTE file field ufCrm_697C815A39C78 (quote_id=%s)", entity_id_int)
+
             except Exception:
-                current_app.logger.exception("Failed to upload KP into deal file field UF_CRM_1768830570994 (deal_id=%s)", deal_id_int)
+                current_app.logger.exception("KP upload to Disk failed (mode=%s id=%s)", mode, entity_id_int)
 
         return send_file(
             BytesIO(docx_bytes),
@@ -241,10 +307,8 @@ def generate():
             download_name="komercheskoe_predlozhenie.docx",
         )
 
-
-
+    # ================= PDF =================
     pdf_bytes = build_pdf_from_template(template_name, context)
-
     return send_file(
         BytesIO(pdf_bytes),
         mimetype="application/pdf",
