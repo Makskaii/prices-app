@@ -112,13 +112,10 @@ def load_from_bitrix():
 
 @bitrix_bp.route("/bx/save", methods=["POST"])
 def save_to_bitrix():
-    """
-    Сохраняем состояние приложения в CRM.
-    Теперь это "источник истины" для таблицы товаров.
-    """
+
     data = request.get_json(silent=True) or {}
 
-    mode = (data.get("mode") or "").upper()   # DEAL | QUOTE
+    mode = (data.get("mode") or "").upper()
     entity_id = str(data.get("id") or "")
     state = data.get("state") or {}
     sum_total = data.get("sumTotal") or 0

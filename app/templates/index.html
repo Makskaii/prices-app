@@ -2523,6 +2523,15 @@
         let pmItemsSearchTerm = "";
         let pmSelectedId = null;
         let pmSearchTerm = "";
+        let pmIsDraft = false; // выбранный прайс = черновик (ещё не в БД)
+
+        function makeDraftId() {
+          return "__draft__" + Date.now() + "_" + Math.random().toString(16).slice(2);
+        }
+
+        function getSelectedPriceListObj() {
+          return PRICE_LISTS.find(x => String(x.id) === String(pmSelectedId)) || null;
+        }
 
         // Modal state + persistence (old behavior)
         const PM_RECT_KEY = "prices_widget_pm_rect_v2";
@@ -2714,9 +2723,14 @@
         }
 
         function closePriceManager(force = false) {
-          if (!force && pmItemsDirty) {
-            if (!confirmNoUnsavedToast("Есть несохранённые изменения.\nЗакрыть без сохранения?")) return;
+          if (pmIsDraft && pmSelectedId) {
+            PRICE_LISTS = PRICE_LISTS.filter(x => String(x.id) !== String(pmSelectedId));
+            pmSelectedId = null;
+            pmItems = [];
+            pmItemsDirty = false;
+            pmIsDraft = false;
           }
+
 
           const { backdrop, dialog } = getPmEls();
           if (!backdrop || !dialog) return;
@@ -2908,7 +2922,7 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
           });
-          if (!res.ok) throw new Error("Не удалось создать прайс");
+          if (!res.ok) throw new Error("Не удалось создать прайс, возможно есть прайсы с одинаковым названием");
           return res.json().catch(() => ({}));
         }
 
@@ -3272,9 +3286,33 @@
 
           // save meta
           try {
-            await apiSavePriceListMeta(pmSelectedId, { name, description });
+            // если это черновик — сначала создаём прайс в БД
+            if (pmIsDraft) {
+              const created = await apiCreatePriceList({ name, description });
 
-            // save items
+              const newId = String(created.id ?? created.result?.id ?? created.price_list_id ?? created.priceListId ?? "");
+              if (!newId) throw new Error("Не удалось получить ID созданного прайса");
+
+              // заменяем draft в PRICE_LISTS на реальный объект
+              const idx = PRICE_LISTS.findIndex(x => String(x.id) === String(pmSelectedId));
+              if (idx >= 0) {
+                PRICE_LISTS[idx] = {
+                  ...PRICE_LISTS[idx],
+                  id: newId,
+                  name,
+                  description,
+                  __isDraft: false
+                };
+              }
+
+              pmSelectedId = newId;
+              pmIsDraft = false;
+            } else {
+              // обычное сохранение меты
+              await apiSavePriceListMeta(pmSelectedId, { name, description });
+            }
+
+            // сохраняем товары прайса
             const itemsPayload = (pmItems || []).map(it => ({
               product_id: it.product_id,
               price: toNumberMoney(it.price)
@@ -3293,7 +3331,14 @@
             showToast("Прайс сохранён", "success");
           } catch (e) {
             console.error(e);
-            showToast("Ошибка сохранения прайса: " + (e.message || e), "error");
+
+            // если бэк вернул 409 — имя занято
+            const msg = (e && e.message) ? e.message : String(e);
+            if (msg.includes("409")) {
+              showToast("Прайс-лист с таким названием уже существует", "error");
+            } else {
+              showToast("Ошибка сохранения прайса: " + msg, "error");
+            }
           }
         }
 
@@ -3304,27 +3349,44 @@
             }
           }
 
-          try {
-            const created = await apiCreatePriceList({
-              name: "Новый прайс",
-              description: ""
-            });
+          // создаём черновик ТОЛЬКО на фронте
+          const draftId = makeDraftId();
+          const draft = {
+            id: draftId,
+            name: "Новый прайс",
+            description: "",
+            items_count: PRODUCTS.length || 0,
+            __isDraft: true
+          };
 
-            // backend may return {id:..} or full object
-            const newId = String(created.id ?? created.result?.id ?? created.price_list_id ?? created.priceListId ?? "");
-            await fetchPriceLists();
-            renderPriceListsSidebar();
+          PRICE_LISTS.unshift(draft);
+          pmSelectedId = String(draftId);
+          pmIsDraft = true;
 
-            if (newId) await selectPriceList(newId);
-            else if (PRICE_LISTS.length) await selectPriceList(PRICE_LISTS[0].id);
+          // ✅ ВАЖНО: новый прайс (даже черновик) сразу содержит ВСЕ товары
+          pmItems = (PRODUCTS || []).map(p => ({
+            product_id: p.id,
+            product_name: p.name || "",
+            product_description: p.description || "",
+            price: getProductBasePrice(p),   // берём базовую цену товара (как и раньше)
+            selected: false
+          }));
 
-            pmItemsDirty = true;
-            showToast("Прайс создан", "success");
-          } catch (e) {
-            console.error(e);
-            showToast("Ошибка создания прайса", "error");
-          }
+          // ✅ обновляем membership cache для подсветок/проверок
+          PRICE_LIST_PRODUCT_IDS_CACHE.set(
+            String(pmSelectedId),
+            new Set(pmItems.map(it => String(it.product_id)))
+          );
+
+          // черновик не сохранён — считаем как "есть несохранённые изменения"
+          pmItemsDirty = true;
+
+          renderPriceListsSidebar();
+          fillPriceListForm(draft);     // тут обновится "Товаров в прайсе: N"
+          renderPriceItemsTable();
         }
+
+
 
         async function pmCopySelected() {
           if (!pmSelectedId) {
@@ -3378,7 +3440,7 @@
             showToast("Прайс удалён", "success");
           } catch (e) {
             console.error(e);
-            showToast("Ошибка удаления прайса", "error");
+            showToast("Ошибка удаления прайса, возможно этот прайс ещё не существует", "error");
           }
         }
 

@@ -3,17 +3,24 @@ from app.database import db
 from app.models.price_list import PriceList
 from app.models.price_item import PriceListItem  
 from app.models.product import Product
+from sqlalchemy.exc import IntegrityError
 
 
 class PriceService:
     @staticmethod
     def create_price_list(name: str, description: str = "") -> PriceList:
-        
-        new_pl = PriceList(name=name, description=description)
+        new_pl = PriceList(name=name.strip(), description=description)
+
         db.session.add(new_pl)
-        db.session.flush()  
+
+        try:
+            db.session.flush()
+        except IntegrityError:
+            db.session.rollback()
+            raise
 
         products = Product.query.all()
+
         items = [
             PriceListItem(
                 price_list_id=new_pl.id,
@@ -22,9 +29,17 @@ class PriceService:
             )
             for p in products
         ]
+
         db.session.add_all(items)
-        db.session.commit()
+
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            raise
+
         return new_pl
+
 
     @staticmethod
     def get_all():
@@ -40,14 +55,22 @@ class PriceService:
         if not pl:
             return None
 
-        if name:
-            pl.name = name
+        if name is not None:
+            pl.name = name.strip()
+
         if description is not None:
             pl.description = description
 
         pl.updated_at = datetime.utcnow()
-        db.session.commit()
+
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            raise
+
         return pl
+
 
     @staticmethod
     def delete(price_list_id: int) -> bool:
@@ -67,13 +90,20 @@ class PriceService:
             return None
 
         new_pl = PriceList(
-            name=new_name or f"{original.name} (копия)",
+            name=(new_name or f"{original.name} (копия)").strip(),
             description=original.description,
         )
+
         db.session.add(new_pl)
-        db.session.flush()
+
+        try:
+            db.session.flush()
+        except IntegrityError:
+            db.session.rollback()
+            raise
 
         original_items = PriceListItem.query.filter_by(price_list_id=price_list_id).all()
+
         items = [
             PriceListItem(
                 price_list_id=new_pl.id,
@@ -82,9 +112,17 @@ class PriceService:
             )
             for i in original_items
         ]
+
         db.session.add_all(items)
-        db.session.commit()
+
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            raise
+
         return new_pl
+
 
     @staticmethod
     def get_price(product_id: str, price_list_id: int):

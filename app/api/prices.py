@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-
+from sqlalchemy.exc import IntegrityError
 from app.database import db
 from app.models.price_item import PriceListItem
 from app.models.price_list import PriceList
@@ -38,12 +38,17 @@ def create_price_list():
     if not name:
         return jsonify({"error": "name is required"}), 400
 
-    pl = PriceService.create_price_list(name=name, description=description)
+    try:
+        pl = PriceService.create_price_list(name=name, description=description)
+    except IntegrityError:
+        return jsonify({"error": "Прайс-лист с таким названием уже существует"}), 409
+
     return jsonify({
         "id": pl.id,
         "name": pl.name,
         "description": pl.description,
     }), 201
+
 
 
 @prices_bp.route("/<int:pl_id>", methods=["GET"])
@@ -74,7 +79,15 @@ def update_price_list(pl_id):
     name = data.get("name")
     description = data.get("description")
 
-    pl = PriceService.update(price_list_id=pl_id, name=name, description=description)
+    try:
+        pl = PriceService.update(
+            price_list_id=pl_id,
+            name=name,
+            description=description
+        )
+    except IntegrityError:
+        return jsonify({"error": "Прайс-лист с таким названием уже существует"}), 409
+
     if not pl:
         return jsonify({"error": "not found"}), 404
 
@@ -83,6 +96,7 @@ def update_price_list(pl_id):
         "name": pl.name,
         "description": pl.description,
     })
+
 
 
 @prices_bp.route("/<int:pl_id>", methods=["DELETE"])
@@ -99,7 +113,11 @@ def copy_price_list(pl_id):
     data = request.get_json(silent=True) or {}
     new_name = data.get("name")
 
-    new_pl = PriceService.copy(pl_id, new_name=new_name)
+    try:
+        new_pl = PriceService.copy(pl_id, new_name=new_name)
+    except IntegrityError:
+        return jsonify({"error": "Прайс-лист с таким названием уже существует"}), 409
+
     if not new_pl:
         return jsonify({"error": "not found"}), 404
 
@@ -108,6 +126,7 @@ def copy_price_list(pl_id):
         "name": new_pl.name,
         "description": new_pl.description,
     }), 201
+
 
 
 @prices_bp.route("/<int:pl_id>/price", methods=["GET"])
