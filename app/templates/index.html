@@ -3766,24 +3766,24 @@
 
             const tdVat = document.createElement("td");
             tdVat.className = "col-vat";
-            const selectVat = document.createElement("select");
-            VAT_RATES.forEach(rate => {
-              const opt = document.createElement("option");
-              opt.value = rate;
-              opt.textContent = rate === 0 ? "0 %" : rate + " %";
-              if (rate === line.vatPercent) opt.selected = true;
-              selectVat.appendChild(opt);
-            });
+            const inputVat = document.createElement("input");
+            inputVat.type = "number";
+            inputVat.min = "0";
+            inputVat.max = "100";
+            inputVat.step = "0.1";  // можно вводить с десятыми долями
+            inputVat.value = line.vatPercent;
 
-            selectVat.addEventListener("change", () => {
-              line.vatPercent = Number(selectVat.value) || 0;
+            inputVat.addEventListener("input", () => {
+              line.vatPercent = Number(inputVat.value) || 0;
               recalcLine(line);
               updateSummary();
               markDirty();
-              tdTotal.textContent = formatMoney(line.total);
+              // Обновляем отображение итога
+              const totalCell = tr.querySelector(".col-total");
+              if (totalCell) totalCell.textContent = formatMoney(line.total);
             });
 
-            tdVat.appendChild(selectVat);
+            tdVat.appendChild(inputVat);
             tr.appendChild(tdVat);
 
             tr.appendChild(tdTotal);
