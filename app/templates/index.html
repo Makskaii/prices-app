@@ -1143,83 +1143,207 @@
       cursor: col-resize !important;
       user-select: none !important;
     }
+    .app-root {
+      display: flex;
+      flex-direction: column;
+      height: calc(var(--appH) - 24px);
+      max-height: calc(var(--appH) - 24px);
+      overflow: hidden;
+      padding: 16px;
+    }
 
+    .left-block {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+    }
+
+    /* Верхняя панель */
+    .toolbar-top {
+      flex-shrink: 0;
+      margin-bottom: 12px;
+    }
+
+    /* Таблица - занимает всё доступное пространство */
+    .products-table-wrapper {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid var(--bx-border);
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+
+    /* Блок с суммами */
+    .summary-card {
+      flex-shrink: 0;
+      margin-bottom: 16px;
+      border: 1px solid var(--bx-border);
+      border-radius: 6px;
+      padding: 12px 16px;
+      background: #fafbfc;
+    }
+
+    /* Нижняя панель с кнопками */
+    .footer-buttons {
+      flex-shrink: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 0;
+      margin-bottom: 16px;
+    }
+
+    /* Панель документов */
+    .docs-panel {
+      flex-shrink: 0;
+      margin-top: 0;
+      border: 1px solid var(--bx-border);
+      border-radius: 6px;
+      padding: 12px 16px;
+      background: #fafbfc;
+    }
+
+    /* Скрываем старый правый блок */
+    .right-block {
+      display: none !important;
+    }
+
+    /* Растягиваем таблицу на всю ширину */
+    .products-table-wrapper table {
+      width: 100%;
+      min-width: 1000px;
+    }
+
+    /* Обновляем ширину колонок */
+    .col-index { width: 50px; }
+    .col-checkbox { width: 40px; }
+    .col-product { min-width: 400px; }
+    .col-price-list { min-width: 220px; }
+    .col-price { width: 180px; }
+    .col-qty { width: 140px; }
+    .col-discount { width: 90px; }
+    .col-vat { width: 80px; }
+    .col-total { width: 130px; }
+
+    /* Стили для полей ввода в таблице */
+    .products-table-wrapper input,
+    .products-table-wrapper select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #c5ced8;
+      border-radius: 4px;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+
+    .products-table-wrapper input:focus,
+    .products-table-wrapper select:focus {
+      border-color: var(--bx-blue-dark);
+      box-shadow: 0 0 0 2px rgba(59, 200, 245, 0.2);
+      outline: none;
+    }
+
+    /* Стили для блока сумм */
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 14px;
+    }
+
+    .summary-row.total {
+      font-weight: 600;
+      border-top: 2px solid #dde2ea;
+      margin-top: 6px;
+      padding-top: 10px;
+      font-size: 16px;
+    }
+
+    .summary-label {
+      color: #555;
+    }
+
+    .summary-value {
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
   <div class="app-root">
-  
     <div class="left-block">
-      <div id="error-banner" class="error-banner"></div>
-
-      <div class="toolbar-top">
-        <div class="toolbar-top-left">
-          <button class="btn btn-primary" id="btn-add-row">+ Добавить товар</button>
-          <button class="btn btn-danger" id="btn-delete-selected" disabled>Удалить выбранные</button>
-          <button class="btn btn-light btn-icon-sync" id="btn-sync-products" title="Синхронизировать товары из Битрикс">🔄</button>
-        </div>
-        <div class="toolbar-top-right">
-          <span class="tag" id="tag-deal-info">Сделка: неизвестно</span>
-        </div>
+    <!-- Верхняя панель -->
+    <div class="toolbar-top">
+      <div class="toolbar-top-left">
+        <button class="btn btn-primary" id="btn-add-row">+ Добавить товар</button>
+        <button class="btn btn-danger" id="btn-delete-selected" disabled>Удалить выбранные</button>
+        <button class="btn btn-light btn-icon-sync" id="btn-sync-products" title="Синхронизировать товары из Битрикс">🔄</button>
       </div>
-
-      <div class="products-table-wrapper products-table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th class="col-index">#</th>
-              <th class="col-checkbox">
-                <input type="checkbox" id="cb-select-all">
-              </th>
-              <th class="col-product">Товар</th>
-              <th class="col-price-list">Прайс-лист</th>
-              <th class="col-price">Цена</th>
-              <th class="col-qty">Кол-во</th>
-              <th class="col-discount">Скидка, %</th>
-              <th class="col-vat">НДС, %</th>
-              <th class="col-total">Итого</th>
-            </tr>
-          </thead>
-          <tbody id="lines-tbody"></tbody>
-        </table>
-      </div>
-
-      <div class="footer-buttons">
-        <div class="footer-left">
-          <button class="btn" id="btn-recalc-selected">Пересчитать выбранные</button>
-        </div>
-        <div class="footer-right">
-          <button class="btn" id="btn-manage-prices">Управление прайсами</button>
-          <button class="btn" id="btn-cancel">Отмена</button>
-          <button class="btn btn-success" id="btn-save">Сохранить</button>
-        </div>
+      <div class="toolbar-top-right">
+        <span class="tag" id="tag-deal-info">Сделка: неизвестно</span>
       </div>
     </div>
 
-    <div class="right-block">
-      <div class="summary-card">
-        <div class="summary-row">
-          <span class="summary-label">Сумма без скидки и налогов:</span>
-          <span class="summary-value" id="sum-base">0.00</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Сумма скидки:</span>
-          <span class="summary-value" id="sum-discount">0.00</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Сумма без налога:</span>
-          <span class="summary-value" id="sum-no-vat">0.00</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Сумма налога:</span>
-          <span class="summary-value" id="sum-vat">0.00</span>
-        </div>
-        <div class="summary-row total">
-          <span class="summary-label">Общая сумма:</span>
-          <span class="summary-value" id="sum-total">0.00</span>
-        </div>
+    <!-- Таблица с товарами -->
+    <div class="products-table-wrapper products-table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-index">#</th>
+            <th class="col-checkbox">
+              <input type="checkbox" id="cb-select-all">
+            </th>
+            <th class="col-product">Товар</th>
+            <th class="col-price-list">Прайс-лист</th>
+            <th class="col-price">Цена</th>
+            <th class="col-qty">Кол-во</th>
+            <th class="col-discount">Скидка, %</th>
+            <th class="col-vat">НДС, %</th>
+            <th class="col-total">Итого</th>
+          </tr>
+        </thead>
+        <tbody id="lines-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Блок с итоговыми суммами (ПЕРЕМЕЩЁН СЮДА) -->
+    <div class="summary-card">
+      <div class="summary-row">
+        <span class="summary-label">Сумма без скидки и налогов:</span>
+        <span class="summary-value" id="sum-base">0.00</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Сумма скидки:</span>
+        <span class="summary-value" id="sum-discount">0.00</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Сумма без налога:</span>
+        <span class="summary-value" id="sum-no-vat">0.00</span>
+      </div>
+      <div class="summary-row">
+        <span class="summary-label">Сумма налога:</span>
+        <span class="summary-value" id="sum-vat">0.00</span>
+      </div>
+      <div class="summary-row total">
+        <span class="summary-label">Общая сумма:</span>
+        <span class="summary-value" id="sum-total">0.00</span>
       </div>
     </div>
+
+    <!-- Нижняя панель с кнопками -->
+    <div class="footer-buttons">
+      <div class="footer-left">
+        <button class="btn" id="btn-recalc-selected">Пересчитать выбранные</button>
+      </div>
+      <div class="footer-right">
+        <button class="btn" id="btn-manage-prices">Управление прайсами</button>
+        <button class="btn" id="btn-cancel">Отмена</button>
+        <button class="btn btn-success" id="btn-save">Сохранить</button>
+      </div>
+    </div>
+  </div>
   </div>
 
 <div class="docs-panel">
@@ -4072,19 +4196,23 @@
             });
           }
 
-          // unsaved guards
           document.addEventListener("visibilitychange", () => {
-            if (!document.hidden) loadEntityState();
-
-            if (suppressUnsavedToast) return;
-            if (document.hidden && hasUnsavedChanges) {
-              showToast("Есть несохранённые изменения. Если уйдёте — они могут не сохраниться.", "error", true);
+            if (!document.hidden) {
+              // При возвращении на вкладку
+              if (!hasUnsavedChanges) {
+                loadEntityState();
+              } else {
+                showToast("Есть несохранённые изменения. Нажмите «Сохранить», чтобы не потерять их.", "error", true);
+              }
+            } else {
+              // При уходе со вкладки
+              if (suppressUnsavedToast) return;
+              if (hasUnsavedChanges) {
+                showToast("Есть несохранённые изменения. Если уйдёте — они могут не сохраниться.", "error", true);
+              }
             }
-
-            // (оставили как было у тебя, но фикс: не ставим интервал бесконечно много раз)
           });
 
-          // one interval only
           setInterval(() => {
             if (!CURRENT_CONTEXT.id || !CURRENT_CONTEXT.mode) return;
             if (hasUnsavedChanges) return;
