@@ -3695,9 +3695,65 @@
               inputPrice.value = num.toString().replace(".", ",");
             });
 
+            // Итого - теперь редактируемое поле
             const tdTotal = document.createElement("td");
             tdTotal.className = "col-total";
-            tdTotal.textContent = formatMoney(line.total);
+            const inputTotal = document.createElement("input");
+            inputTotal.type = "text";
+            inputTotal.value = formatMoney(line.total);
+            inputTotal.style.textAlign = "right";
+
+            // При фокусе показываем число без форматирования для удобства редактирования
+            inputTotal.addEventListener("focus", function() {
+                this.value = line.total.toFixed(2).replace(".", ",");
+            });
+
+            // При потере фокуса - пересчитываем скидку
+            inputTotal.addEventListener("blur", function() {
+                let raw = this.value.replace(/\s+/g, "").replace(",", ".");
+                let newTotal = parseFloat(raw);
+                
+                // Проверяем, что введено корректное число
+                if (isNaN(newTotal) || newTotal < 0) {
+                    newTotal = 0;
+                }
+                
+                // Базовая стоимость (цена × количество)
+                const basePrice = line.price * line.quantity;
+                
+                if (basePrice > 0) {
+                    // Рассчитываем новую скидку
+                    // Итого = base - (base * discount/100) + vat
+                    // Но нам нужно найти discount, зная итого
+                    // Сначала вычтем НДС из итого
+                    const baseAfterDiscount = newTotal - line.vatAmount;
+                    
+                    // Теперь можем найти скидку
+                    const newDiscountPercent = ((basePrice - baseAfterDiscount) / basePrice) * 100;
+                    
+                    // Ограничиваем скидку от 0 до 100
+                    line.discountPercent = Math.min(100, Math.max(0, newDiscountPercent));
+                } else {
+                    line.discountPercent = 0;
+                }
+                
+                // Пересчитываем все суммы
+                recalcLine(line);
+                updateSummary();
+                markDirty();
+                
+                // Обновляем значение поля
+                this.value = formatMoney(line.total);
+                
+                // Обновляем отображение скидки в этой строке
+                const discountInput = tr.querySelector(".col-discount input");
+                if (discountInput) {
+                    discountInput.value = line.discountPercent;
+                }
+            });
+
+            tdTotal.appendChild(inputTotal);
+            tr.appendChild(tdTotal);
 
             inputPrice.addEventListener("blur", () => {
               let raw = inputPrice.value || "";
@@ -3758,7 +3814,8 @@
               recalcLine(line);
               updateSummary();
               markDirty();
-              tdTotal.textContent = formatMoney(line.total);
+              const totalInput = tr.querySelector(".col-total input");
+              if (totalInput) totalInput.value = formatMoney(line.total);
             });
 
             tdDiscount.appendChild(inputDiscount);
