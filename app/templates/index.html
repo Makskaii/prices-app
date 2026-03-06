@@ -28,8 +28,11 @@
       font-size: 13px;
       background: var(--bx-bg);
       color: var(--bx-text);
+      height: 100vh;
+      overflow: hidden;
     }
 
+    /* ===== MODAL STYLES ===== */
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -53,13 +56,8 @@
       display: flex;
       flex-direction: column;
       border: 1px solid var(--bx-border);
-
       position: absolute; 
-
-      display: flex;
-      flex-direction: column;
       max-height: calc(100vh - 40px);
-
     }
 
     .modal-header {
@@ -104,7 +102,6 @@
       color: #333;
     }
 
-
     .modal-body {
       padding: 12px 14px;
       display: grid;
@@ -121,7 +118,7 @@
       padding: 6px 10px;
       border-top: 1px solid #e1e6ec;
       gap: 8px;
-        }
+    }
 
     .modal-footer-spacer{
       flex: 1 1 auto;
@@ -206,6 +203,7 @@
       cursor: nesw-resize;
     }
 
+    /* ===== PRICE MANAGER STYLES ===== */
     .price-list-sidebar {
       border: 1px solid #e3e7ee;
       border-radius: 6px;
@@ -340,7 +338,6 @@
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      
       flex: 1 1 auto;
       min-height: 0;
     }
@@ -351,7 +348,6 @@
       border-bottom: 1px solid #e3e7ee;
       font-size: 12px;
       font-weight: 600;
-
       display:flex;
       align-items:center;
       justify-content: space-between;
@@ -385,7 +381,6 @@
     .price-items-table-container {
       overflow: auto;
       padding-bottom: 16px;
-
       flex: 1 1 auto;
       min-height: 0;
     }
@@ -429,8 +424,6 @@
       opacity: 0;
       transform: translateY(10px);
       transition: opacity 0.2s ease, transform 0.2s ease;
-      
-      /* чтобы иконка и текст стояли рядом */
       display: flex;
       align-items: flex-start;
       gap: 8px;
@@ -461,27 +454,28 @@
       background: #ff726c;
     }
     
+    /* ===== ОСНОВНОЙ ЛЕЙАУТ ===== */
     .app-root {
-      max-width: 1360px;
+      max-width: 1200px;
       margin: 0 auto;
       background: #fff;
       border-radius: 8px;
       border: 1px solid var(--bx-border);
       box-shadow: 0 1px 3px rgba(15, 35, 52, 0.08);
       padding: 16px;
-      display: grid;
-      grid-template-columns: minmax(0, 3fr) 260px;
-      gap: 16px;
+      height: calc(100vh - 24px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
 
-    .left-block { min-width: 0; }
-    .right-block { min-width: 0; }
-
+    /* Верхняя панель */
     .toolbar-top {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 8px;
+      margin-bottom: 12px;
+      flex-shrink: 0;
     }
 
     .toolbar-top-left,
@@ -491,6 +485,7 @@
       align-items: center;
     }
 
+    /* Кнопки */
     .btn {
       padding: 6px 12px;
       border-radius: 4px;
@@ -563,19 +558,49 @@
       color: var(--bx-muted);
     }
 
-    .products-table-wrapper {
+    .error-banner {
+      background: #ffe8e6;
+      border: 1px solid #ffb4aa;
+      color: #9b1c1c;
+      padding: 6px 8px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      display: none;
+    }
+
+    /* ===== ТАБЛИЦА С РЕСАЙЗОМ ===== */
+    .table-container {
+      width: 100%;
       border: 1px solid var(--bx-border);
       border-radius: 6px;
-      overflow: hidden;
+      margin-bottom: 16px;
+      resize: vertical;
+      min-height: 150px;
+      max-height: 60vh;
+      overflow: auto;
+      background: #fff;
+      position: relative;
     }
 
-    table {
-      width: 100%;
+    .products-table-wrapper {
+      min-width: min-content;
+      height: 100%;
+    }
+
+    .products-table-wrapper table {
       border-collapse: collapse;
       font-size: 13px;
+      table-layout: auto;
+      width: 100%;
     }
 
-    thead { background: #f4f7fb; }
+    thead { 
+      background: #f4f7fb; 
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
 
     th, td {
       padding: 6px 8px;
@@ -583,26 +608,33 @@
       text-align: left;
       white-space: nowrap;
       vertical-align: middle;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    th { font-weight: 600; color: #555; }
+    th { 
+      font-weight: 600; 
+      color: #555; 
+    }
 
     tbody tr:nth-child(even) { background: #fbfcfe; }
     tbody tr.selected { background: #e6f4ff; }
 
-    .col-index { width: 26px; text-align: right; color: var(--bx-muted); }
-    .col-checkbox { width: 26px; text-align: center; }
-    .col-product { min-width: 280px; }
-    .col-price-list { width: 140px; }
-    .col-price { width: 120px; }
-    .col-qty,
-    .col-discount,
-    .col-vat,
-    .col-total { width: 90px; }
+    /* ===== КОМПАКТНЫЕ КОЛОНКИ ===== */
+    .col-index { width: 30px; min-width: 30px; max-width: 30px; text-align: right; color: var(--bx-muted); padding: 6px 4px; }
+    .col-checkbox { width: 30px; min-width: 30px; max-width: 30px; text-align: center; padding: 6px 4px; }
+    .col-product { width: 180px; min-width: 160px; max-width: 200px; white-space: normal; word-break: break-word; }
+    .col-price-list { width: 110px; min-width: 100px; max-width: 120px; }
+    .col-price { width: 80px; min-width: 70px; max-width: 90px; }
+    .col-qty { width: 60px; min-width: 55px; max-width: 70px; }
+    .col-discount { width: 60px; min-width: 55px; max-width: 70px; }
+    .col-vat { width: 50px; min-width: 45px; max-width: 60px; }
+    .col-total { width: 90px; min-width: 80px; max-width: 100px; }
 
     input[type="checkbox"] {
       transform: scale(1.1);
       cursor: pointer;
+      margin: 0;
     }
 
     select,
@@ -611,12 +643,12 @@
       width: 100%;
       box-sizing: border-box;
       padding: 4px 6px;
-      font-size: 13px;
+      font-size: 12px;
       border-radius: 4px;
       border: 1px solid #c5ced8;
       background: #fff;
       outline: none;
-      transition: border-color 0.15s, box-shadow 0.15s;
+      height: 28px;
     }
 
     select:focus,
@@ -632,43 +664,25 @@
       gap: 4px;
     }
 
+    .input-qty-wrapper input {
+      width: 45px;
+    }
+
     .unit-label {
       font-size: 11px;
       color: var(--bx-muted);
       white-space: nowrap;
     }
 
-    .error-banner {
-      background: #ffe8e6;
-      border: 1px solid #ffb4aa;
-      color: #9b1c1c;
-      padding: 6px 8px;
-      border-radius: 4px;
-      margin-bottom: 8px;
-      font-size: 12px;
-      display: none;
-    }
-
-    .footer-buttons {
-      margin-top: 10px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .footer-left,
-    .footer-right {
-      display: flex;
-      gap: 8px;
-    }
-
+    /* ===== БЛОК СУММ ===== */
     .summary-card {
       border: 1px solid var(--bx-border);
       border-radius: 6px;
       padding: 10px 12px;
       background: #fafbfc;
       font-size: 13px;
+      flex-shrink: 0;
+      margin-bottom: 16px;
     }
 
     .summary-row {
@@ -687,7 +701,88 @@
     }
 
     .summary-label { margin-right: 12px; }
-    .summary-value { text-align: right; }
+    .summary-value { text-align: right; font-weight: 500; }
+
+    /* ===== НИЖНЯЯ ПАНЕЛЬ ===== */
+    .footer-buttons {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      margin-bottom: 16px;
+    }
+
+    .footer-left,
+    .footer-right {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* ===== ПАНЕЛЬ ДОКУМЕНТОВ ===== */
+    .docs-panel {
+      border: 1px solid var(--bx-border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      background: #fafbfc;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .docs-panel-title {
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .docs-variants {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .docs-variant {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .docs-variant:hover {
+      background: #f0f4ff;
+    }
+
+    .docs-variant input[type="radio"] {
+      margin: 0;
+    }
+
+    .docs-variant-label-main {
+      font-weight: 500;
+    }
+
+    .docs-variant-label-sub {
+      font-size: 11px;
+      color: var(--bx-muted);
+    }
+
+    /* ===== ПРОЧИЕ СТИЛИ ===== */
+    .warn-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: 6px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff3cd;
+      border: 1px solid #ffeeba;
+      color: #856404;
+      font-size: 12px;
+      line-height: 1;
+      cursor: help;
+    }
 
     .product-dropdown {
       position: fixed;
@@ -747,239 +842,6 @@
       text-overflow: ellipsis;
     }
 
-    .docs-panel {
-      margin-top: 12px;
-      border: 1px solid var(--bx-border);
-      border-radius: 6px;
-      padding: 10px 12px;
-      background: #fafbfc;
-      font-size: 13px;
-    }
-
-    .docs-panel-title {
-      font-weight: 600;
-      margin-bottom: 6px;
-    }
-
-    .docs-variants {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-bottom: 8px;
-    }
-
-    .docs-variant {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 6px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    .docs-variant:hover {
-      background: #f0f4ff;
-    }
-
-    .docs-variant input[type="radio"] {
-      margin: 0;
-    }
-
-    .docs-variant-label-main {
-      font-weight: 500;
-    }
-
-    .docs-variant-label-sub {
-      font-size: 11px;
-      color: var(--bx-muted);
-    }
-
-    .price-list-sidebar,
-    .price-list-form {
-      min-height: 0;
-      height: 100%;
-    }
-
-    /* Форма справа — колонка, а блок товаров должен занять остаток */
-    .price-list-form {
-      display: flex;
-      flex-direction: column;
-    }
-
-    /* ВАЖНО: блок товаров в прайсе занимает оставшееся место и прокручивается внутри */
-    .price-items-wrapper {
-      flex: 1 1 auto;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    /* Вот где будет реальный скролл */
-    .price-items-table-container {
-      flex: 1 1 auto;
-      min-height: 0;
-      overflow-y: auto;
-      overflow-x: hidden;
-
-      /* чтобы последние строки не прятались за футером/тенями */
-      padding-bottom: 16px;
-    }
-
-
-    /* Режим: на весь экран только блок товаров внутри модалки */
-    .modal-dialog.pm-items-fullscreen .modal-body{
-      grid-template-columns: 1fr; /* вместо 2 колонок */
-    }
-
-    .modal-dialog.pm-items-fullscreen .price-list-sidebar{
-      display:none;
-    }
-
-    /* скрываем все поля формы, кроме таблицы товаров */
-    .modal-dialog.pm-items-fullscreen .price-list-actions,
-    .modal-dialog.pm-items-fullscreen .price-list-form-row,
-    .modal-dialog.pm-items-fullscreen .price-list-form-meta{
-      display:none;
-    }
-
-    /* таблица занимает максимум */
-    .modal-dialog.pm-items-fullscreen .price-list-form{
-      height: 100%;
-    }
-
-    .modal-dialog.pm-items-fullscreen .price-items-wrapper{
-      flex: 1 1 auto;
-      min-height: 0;
-    }
-
-    .pm-footer-grid{
-      width: 100%;
-      display: grid;
-      grid-template-columns: 280px minmax(0, 1fr);
-      align-items: center;
-    }
-
-    /* кнопки в правой колонке, прижаты вправо */
-    .pm-footer-actions{
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
-
-    /* чуть компактнее область кнопок */
-    .pm-footer-actions .btn{
-      padding: 6px 12px;
-    }
-
-    .modal-dialog.pm-items-fullscreen .pm-footer-grid{
-      grid-template-columns: 1fr;
-    }
-    .modal-dialog.pm-items-fullscreen .pm-footer-grid > div:first-child{
-      display: none;
-    }
-
-    /* Футер модалки прайсов: сетка как у modal-body */
-    .modal-footer.pm-footer{
-      display: grid !important;
-      grid-template-columns: 280px minmax(0, 1fr);
-      gap: 12px;
-      align-items: center;
-
-      /* чтобы визуально совпало с body */
-      padding: 6px 14px;
-      border-top: 1px solid #e1e6ec;
-    }
-
-    /* кнопки прижимаем вправо во второй колонке */
-    .modal-footer.pm-footer .pm-footer-actions{
-      justify-self: end;
-      display: flex;
-      gap: 8px;
-    }
-
-    /* в режиме "товары на весь экран" скрываем левую колонку */
-    .modal-dialog.pm-items-fullscreen .modal-footer.pm-footer{
-      grid-template-columns: 1fr;
-    }
-    .modal-dialog.pm-items-fullscreen .modal-footer.pm-footer .pm-footer-left{
-      display: none;
-    }
-    
-    /* футер повторяет сетку modal-body: (сайдбар 280px) + (правая часть) */
-    #pm-footer{
-      display: grid !important;
-      grid-template-columns: 280px minmax(0, 1fr);
-      align-items: center;
-      padding: 8px 14px;
-      gap: 8px;
-      padding-right: 100px;
-    }
-
-    /* кнопки лежат во 2й колонке и прижаты вправо */
-    #pm-footer .pm-footer-actions{
-      grid-column: 2;
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
-
-    #pm-footer .pm-footer-actions .btn{
-      padding: 6px 10px;
-      line-height: 1.1;
-    }
-
-    .modal-dialog.pm-items-fullscreen #pm-footer{
-      grid-template-columns: 1fr;
-    }
-    .modal-dialog.pm-items-fullscreen #pm-footer .pm-footer-actions{
-      grid-column: 1;
-    }
-
-    .price-items-table th,
-    .price-items-table td {
-      white-space: normal !important;
-    }
-
-    .price-items-table th:nth-child(1),
-    .price-items-table td:nth-child(1) { width: 34px; min-width:34px; max-width:34px; text-align:center; }
-
-    .price-items-table th:nth-child(2),
-    .price-items-table td:nth-child(2) { width: 40px; min-width:40px; max-width:40px; }
-
-    .price-items-table th:nth-child(3),
-    .price-items-table td:nth-child(3) { width: 110px; min-width:110px; max-width:110px; }
-
-    .price-items-table th:nth-child(5),
-    .price-items-table td:nth-child(5) { width: 44px; min-width:44px; max-width:44px; text-align:center; }
-
-    .price-items-table th:nth-child(4),
-    .price-items-table td:nth-child(4) {
-      overflow: hidden;
-      padding-right: 12px;
-    }
-
-    .pm-item-title,
-    .pm-item-desc {
-      overflow-wrap: anywhere;
-      word-break: break-word;
-    }
-
-    .warn-icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      margin-left: 6px;
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: #fff3cd;
-      border: 1px solid #ffeeba;
-      color: #856404;
-      font-size: 12px;
-      line-height: 1;
-      cursor: help;
-    }
     .product-row.not-in-price {
       opacity: 0.6;
     }
@@ -989,134 +851,12 @@
       color: #ff5b54;
     }
 
-    .pm-desc-row {
+    /* ===== RESIZABLE COLUMNS ===== */
+    .table-container thead th {
       position: relative;
+      user-select: none;
     }
 
-    .pm-default-wrap {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 6px;
-    }
-
-    .pm-btn-default {
-      padding: 4px 8px;
-      font-size: 12px;
-      height: 26px;
-      line-height: 1;
-      border-radius: 4px;
-      opacity: 0.85;
-    }
-
-    .pm-btn-default:hover {
-      opacity: 1;
-    }
-
-    .price-list-form-row.pm-desc-row {
-      position: relative;
-    }
-
-    .price-list-form-row.pm-desc-row .pm-default-wrap{
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 6px;
-    }
-
-    .price-list-form-row.pm-desc-row .pm-btn-default{
-      padding: 4px 8px !important;
-      font-size: 12px !important;
-      height: 26px !important;
-      line-height: 1 !important;
-      border-radius: 4px;
-      width: auto !important;
-      display: inline-flex;
-      align-items: center;
-      opacity: 0.9;
-    }
-
-    .price-list-form-row.pm-desc-row .pm-btn-default:hover{
-      opacity: 1;
-    }
-
-
-    :root { --appH: 100vh; }
-
-    /* body must not become the scroller (Bitrix iframes sometimes intercept it) */
-    html, body {
-      height: 100%;
-    }
-
-    /* Make the main layout vertically bounded and predictable */
-    .app-root{
-      /* important: limit height to viewport and allow inner scrolling areas */
-      height: calc(var(--appH) - 24px);  /* 12px top + 12px bottom padding in body */
-      max-height: calc(var(--appH) - 24px);
-      overflow: hidden;                 /* prevent table from flowing under other UI */
-    }
-
-    /* Left column becomes a vertical layout:
-      toolbar -> table (scroll) -> footer */
-    .left-block{
-      display: flex;
-      flex-direction: column;
-      min-height: 0;     /* critical for flex children scrolling */
-    }
-
-    /* Keep toolbars/footers from shrinking weirdly */
-    .toolbar-top,
-    .footer-buttons{
-      flex: 0 0 auto;
-    }
-
-    /* This wrapper becomes the ONLY scroller for the main product lines */
-    .products-table-wrapper.products-table-scroll{
-      flex: 1 1 auto;
-      min-height: 0;       /* critical */
-      overflow: auto;      /* ✅ scroll always here */
-      overscroll-behavior: contain;
-      -webkit-overflow-scrolling: touch;
-
-      /* safety: if something still goes wrong, force a max-height */
-      max-height: 100%;
-    }
-
-    /* Sticky header (works in modern browsers; safe fallback if not supported) */
-    .products-table-wrapper.products-table-scroll thead th{
-      position: sticky;
-      top: 0;
-      z-index: 2;
-      background: #f4f7fb;
-    }
-
-    /* Prevent last row being hidden under footer shadow etc. */
-    .products-table-wrapper.products-table-scroll table{
-      margin-bottom: 12px;
-    }
-
-    /* Keep right block from stretching the whole grid */
-    .right-block{
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
-    }
-    .summary-card{
-      flex: 0 0 auto;
-    }
-
-    /* ===== RESIZABLE COLUMNS (main products table) ===== */
-
-    /* чтобы ширины работали стабильно */
-    .products-table-wrapper table {
-      table-layout: fixed;
-    }
-
-    /* заголовки должны быть якорем для ресайзера */
-    .products-table-wrapper thead th {
-      position: relative;
-      user-select: none; /* чтобы текст не выделялся при перетаскивании */
-    }
-
-    /* сама “ручка” справа */
     .th-resizer {
       position: absolute;
       top: 0;
@@ -1127,7 +867,6 @@
       z-index: 5;
     }
 
-    /* небольшая подсветка при наведении */
     .th-resizer:hover::after {
       content: "";
       position: absolute;
@@ -1138,138 +877,55 @@
       background: rgba(11, 177, 229, 0.6);
     }
 
-    /* во время ресайза убираем выделение/перетаскивание */
     body.col-resize-active {
       cursor: col-resize !important;
       user-select: none !important;
     }
-    .app-root {
-      display: flex;
-      flex-direction: column;
-      height: calc(var(--appH) - 24px);
-      max-height: calc(var(--appH) - 24px);
-      overflow: hidden;
-      padding: 16px;
+
+    /* Индикатор ресайза для таблицы */
+    .table-container::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 6px;
+      background: linear-gradient(180deg, transparent, rgba(59, 200, 245, 0.2));
+      cursor: ns-resize;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+      z-index: 10;
     }
 
-    .left-block {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      min-height: 0;
-      width: 100%;
+    .table-container:hover::after {
+      opacity: 1;
     }
 
-    /* Верхняя панель */
-    .toolbar-top {
-      flex-shrink: 0;
-      margin-bottom: 12px;
+    .table-container.resizing::after {
+      background: linear-gradient(180deg, transparent, var(--bx-blue));
+      opacity: 1;
+      height: 8px;
     }
 
-    /* Таблица - занимает всё доступное пространство */
-    .products-table-wrapper {
-      flex: 1;
-      min-height: 0;
-      overflow: auto;
-      border: 1px solid var(--bx-border);
-      border-radius: 6px;
-      margin-bottom: 16px;
-    }
-
-    /* Блок с суммами */
-    .summary-card {
-      flex-shrink: 0;
-      margin-bottom: 16px;
-      border: 1px solid var(--bx-border);
-      border-radius: 6px;
-      padding: 12px 16px;
-      background: #fafbfc;
-    }
-
-    /* Нижняя панель с кнопками */
-    .footer-buttons {
-      flex-shrink: 0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 0;
-      margin-bottom: 16px;
-    }
-
-    /* Панель документов */
-    .docs-panel {
-      flex-shrink: 0;
-      margin-top: 0;
-      border: 1px solid var(--bx-border);
-      border-radius: 6px;
-      padding: 12px 16px;
-      background: #fafbfc;
-    }
-
-    /* Скрываем старый правый блок */
+    /* Скрываем старый right-block */
     .right-block {
       display: none !important;
     }
 
-    /* Растягиваем таблицу на всю ширину */
-    .products-table-wrapper table {
-      width: 100%;
-      min-width: 1000px;
+    /* Адаптивность */
+    @media (max-width: 1100px) {
+      .col-product { width: 160px; }
+      .col-price-list { width: 100px; }
     }
 
-    /* Обновляем ширину колонок */
-    .col-index { width: 50px; }
-    .col-checkbox { width: 40px; }
-    .col-product { min-width: 400px; }
-    .col-price-list { min-width: 220px; }
-    .col-price { width: 180px; }
-    .col-qty { width: 140px; }
-    .col-discount { width: 90px; }
-    .col-vat { width: 80px; }
-    .col-total { width: 130px; }
-
-    /* Стили для полей ввода в таблице */
-    .products-table-wrapper input,
-    .products-table-wrapper select {
-      width: 100%;
-      padding: 6px 8px;
-      border: 1px solid #c5ced8;
-      border-radius: 4px;
-      font-size: 13px;
-      box-sizing: border-box;
-    }
-
-    .products-table-wrapper input:focus,
-    .products-table-wrapper select:focus {
-      border-color: var(--bx-blue-dark);
-      box-shadow: 0 0 0 2px rgba(59, 200, 245, 0.2);
-      outline: none;
-    }
-
-    /* Стили для блока сумм */
-    .summary-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 0;
-      font-size: 14px;
-    }
-
-    .summary-row.total {
-      font-weight: 600;
-      border-top: 2px solid #dde2ea;
-      margin-top: 6px;
-      padding-top: 10px;
-      font-size: 16px;
-    }
-
-    .summary-label {
-      color: #555;
-    }
-
-    .summary-value {
-      font-weight: 500;
+    @media (max-width: 900px) {
+      .app-root { padding: 12px; }
+      .col-product { width: 140px; }
+      .col-price-list { width: 90px; }
     }
   </style>
+
 </head>
 <body>
   <div class="app-root">
@@ -1287,25 +943,27 @@
     </div>
 
     <!-- Таблица с товарами -->
-    <div class="products-table-wrapper products-table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th class="col-index">#</th>
-            <th class="col-checkbox">
-              <input type="checkbox" id="cb-select-all">
-            </th>
-            <th class="col-product">Товар</th>
-            <th class="col-price-list">Прайс-лист</th>
-            <th class="col-price">Цена</th>
-            <th class="col-qty">Кол-во</th>
-            <th class="col-discount">Скидка, %</th>
-            <th class="col-vat">НДС, %</th>
-            <th class="col-total">Итого</th>
-          </tr>
-        </thead>
-        <tbody id="lines-tbody"></tbody>
-      </table>
+    <div class="table-container" id="table-container">
+      <div class="products-table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-index">#</th>
+              <th class="col-checkbox">
+                <input type="checkbox" id="cb-select-all">
+              </th>
+              <th class="col-product">Товар</th>
+              <th class="col-price-list">Прайс-лист</th>
+              <th class="col-price">Цена</th>
+              <th class="col-qty">Кол-во</th>
+              <th class="col-discount">Скидка, %</th>
+              <th class="col-vat">НДС, %</th>
+              <th class="col-total">Итого</th>
+            </tr>
+          </thead>
+          <tbody id="lines-tbody"></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Блок с итоговыми суммами (ПЕРЕМЕЩЁН СЮДА) -->
@@ -1524,10 +1182,6 @@
                   type="button"
                 >⛶</button>
               </div>
-            </div>
-
-            <div class="price-items-table-container">
-              <table class="price-items-table" id="pm-items-table"></table>
             </div>
           </div>
       </div>
@@ -3932,6 +3586,7 @@
             inputDiscount.max = "100";
             inputDiscount.step = "1";
             inputDiscount.value = line.discountPercent;
+            inputDiscount.value = line.discountPercent.toFixed(2);
 
             inputDiscount.addEventListener("input", () => {
               line.discountPercent = Number(inputDiscount.value) || 0;
@@ -3942,6 +3597,11 @@
               if (totalInput) totalInput.value = formatMoney(line.total);
             });
 
+            inputDiscount.addEventListener("blur", () => {
+              // Округляем до двух знаков
+              line.discountPercent = Math.round(line.discountPercent * 100) / 100;
+              inputDiscount.value = line.discountPercent.toFixed(2);
+            });
             tdDiscount.appendChild(inputDiscount);
             tr.appendChild(tdDiscount);
 
@@ -4402,6 +4062,65 @@
           });
         })();
 
+      })();
+
+      // -------------------- RESIZABLE TABLE --------------------
+      (function initResizableTable() {
+        const tableContainer = document.getElementById('table-container');
+        if (!tableContainer) return;
+
+        let startY = 0;
+        let startHeight = 0;
+        let resizing = false;
+
+        function onMouseMove(e) {
+          if (!resizing) return;
+          
+          const dy = e.clientY - startY;
+          const newHeight = Math.max(150, startHeight + dy);
+          const maxHeight = window.innerHeight - 300; // немного уменьшил запас
+          
+          tableContainer.style.height = Math.min(newHeight, maxHeight) + 'px';
+          tableContainer.classList.add('resizing');
+        }
+
+        function onMouseUp() {
+          if (!resizing) return;
+          resizing = false;
+          tableContainer.classList.remove('resizing');
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+          document.body.style.cursor = '';
+          
+          try {
+            localStorage.setItem('table_height', tableContainer.style.height);
+          } catch (e) {}
+        }
+
+        tableContainer.addEventListener('mousedown', (e) => {
+          const rect = tableContainer.getBoundingClientRect();
+          const isNearBottom = e.clientY > rect.bottom - 10;
+          
+          if (isNearBottom) {
+            e.preventDefault();
+            resizing = true;
+            startY = e.clientY;
+            startHeight = tableContainer.offsetHeight;
+            
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+            document.body.style.cursor = 'ns-resize';
+          }
+        });
+
+        // Восстанавливаем сохранённую высоту
+        try {
+          const savedHeight = localStorage.getItem('table_height');
+          if (savedHeight) {
+            const h = parseInt(savedHeight);
+            if (h >= 150) tableContainer.style.height = savedHeight;
+          }
+        } catch (e) {}
       })();
       </script>
     </body>
