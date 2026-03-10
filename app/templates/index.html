@@ -924,6 +924,126 @@
       .col-product { width: 140px; }
       .col-price-list { width: 90px; }
     }
+    .app-root {
+      overflow-y: auto !important;
+      height: calc(100vh - 24px);
+      padding-bottom: 20px;
+    }
+
+    .table-container {
+      max-height: none;
+      margin-bottom: 16px;
+    }
+
+    .summary-card,
+    .footer-buttons,
+    .docs-panel {
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+
+    .docs-panel {
+      margin-bottom: 10px;
+    }
+
+    .modal-dialog {
+      max-height: 90vh;
+      overflow: hidden;
+    }
+    /* Стили для таблицы товаров в модальном окне */
+    .price-items-table-container {
+      overflow: auto;
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: 400px;
+    }
+
+    .price-items-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      table-layout: fixed;
+    }
+
+    .price-items-table th {
+      background: #f4f7fb;
+      padding: 8px 6px;
+      font-weight: 600;
+      color: #555;
+      border-bottom: 1px solid #e3e7ee;
+    }
+
+    .price-items-table td {
+      padding: 6px;
+      border-bottom: 1px solid #eef1f4;
+    }
+
+    .price-items-table tbody tr:hover {
+      background: #f0f6ff;
+    }
+
+    .price-items-table input[type="checkbox"] {
+      margin: 0;
+      transform: scale(1);
+    }
+
+    .price-item-price-input {
+      width: 100%;
+      padding: 4px 6px;
+      border: 1px solid #c5ced8;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    .price-item-price-input:focus {
+      border-color: var(--bx-blue-dark);
+      box-shadow: 0 0 0 2px rgba(59, 200, 245, 0.2);
+      outline: none;
+    }
+
+    /* Кнопка удаления в таблице товаров */
+    .price-items-table td:last-child button {
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 20px;
+      color: #ff5b54;
+      padding: 0 4px;
+    }
+
+    .price-items-table td:last-child button:hover {
+      color: #ff0000;
+    }
+    /* Исправляем z-index */
+    .modal-backdrop {
+      z-index: 20000;
+    }
+
+    .modal-dialog {
+      z-index: 20001;
+    }
+
+    .product-dropdown {
+      z-index: 30000;
+    }
+    /* Панель документов всегда видна */
+    .docs-panel {
+      margin-top: 16px;
+      background: #fafbfc;
+      border: 1px solid var(--bx-border);
+      border-radius: 6px;
+      padding: 12px 16px;
+      position: relative;
+      z-index: 5;
+    }
+
+    /* Делаем её видимой при прокрутке */
+    body .docs-panel {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
   </style>
 
 </head>
@@ -935,6 +1055,7 @@
       <div class="toolbar-top-left">
         <button class="btn btn-primary" id="btn-add-row">+ Добавить товар</button>
         <button class="btn btn-danger" id="btn-delete-selected" disabled>Удалить выбранные</button>
+        <button class="btn" id="btn-recalc-selected">Пересчитать выбранные</button>
         <button class="btn btn-light btn-icon-sync" id="btn-sync-products" title="Синхронизировать товары из Битрикс">🔄</button>
       </div>
       <div class="toolbar-top-right">
@@ -992,90 +1113,87 @@
 
     <!-- Нижняя панель с кнопками -->
     <div class="footer-buttons">
-      <div class="footer-left">
-        <button class="btn" id="btn-recalc-selected">Пересчитать выбранные</button>
-      </div>
       <div class="footer-right">
         <button class="btn" id="btn-manage-prices">Управление прайсами</button>
         <button class="btn" id="btn-cancel">Отмена</button>
         <button class="btn btn-success" id="btn-save">Сохранить</button>
       </div>
     </div>
-  </div>
-  </div>
 
-<div class="docs-panel">
-  <div class="docs-panel-title">Сформировать документ (в карточку сделки подтягивается только DOCX формат)</div>
-    <div class="docs-variants">
-      <!-- 1. ТП: со скидкой + НДС (текущий шаблон) -->
-      <label class="docs-variant">
-        <input type="radio" name="doc-variant" value="kp_tp_discount" checked>
-        <div>
-          <div class="docs-variant-label-main">
-            Техническая поддержка со скидкой и НДС
-          </div>
-          <div class="docs-variant-label-sub">
-            Таблица со скидкой и НДС.
+    <div class="docs-panel">
+      <div class="docs-panel-title">Сформировать документ (в карточку сделки подтягивается только DOCX формат)</div>
+        <div class="docs-variants">
+          <!-- 1. ТП: со скидкой + НДС (текущий шаблон) -->
+          <label class="docs-variant">
+            <input type="radio" name="doc-variant" value="kp_tp_discount" checked>
+            <div>
+              <div class="docs-variant-label-main">
+                Техническая поддержка со скидкой и НДС
+              </div>
+              <div class="docs-variant-label-sub">
+                Таблица со скидкой и НДС.
+              </div>
+            </div>
+          </label>
+
+          <!-- 2. ТП: без скидки, с НДС -->
+          <label class="docs-variant">
+            <input type="radio" name="doc-variant" value="kp_tp_basic">
+            <div>
+              <div class="docs-variant-label-main">
+                Техническая поддержка
+              </div>
+              <div class="docs-variant-label-sub">
+                Таблица без скидки.
+              </div>
+            </div>
+          </label>
+
+          <!-- 3. ТП: со скидкой, без НДС (+ текст после таблицы) -->
+          <label class="docs-variant">
+            <input type="radio" name="doc-variant" value="kp_tp_no_vat">
+            <div>
+              <div class="docs-variant-label-main">
+                Поставка ПО со скидкой
+              </div>
+              <div class="docs-variant-label-sub">
+                Таблица без НДС.
+              </div>
+            </div>
+          </label>
+
+          <!-- 4. ТП: без скидки, без НДС -->
+          <label class="docs-variant">
+            <input type="radio" name="doc-variant" value="kp_tp_no_vat_nodiscount">
+            <div>
+              <div class="docs-variant-label-main">
+                Поставка ПО
+              </div>
+              <div class="docs-variant-label-sub">
+                Таблица без скидки и без НДС.
+              </div>
+            </div>
+          </label>
+          
+          <div style="display:flex; gap:12px; align-items:center; margin-top:8px;">
+          <label style="display:flex; gap:6px; align-items:center;">
+            <input type="radio" name="doc-format" value="pdf" checked>
+            PDF
+          </label>
+
+          <label style="display:flex; gap:6px; align-items:center;">
+            <input type="radio" name="doc-format" value="docx">
+            DOCX
+          </label>
+
+          <button class="btn btn-primary" id="btn-generate-doc">
+            Скачать
+          </button>
           </div>
         </div>
-      </label>
-
-      <!-- 2. ТП: без скидки, с НДС -->
-      <label class="docs-variant">
-        <input type="radio" name="doc-variant" value="kp_tp_basic">
-        <div>
-          <div class="docs-variant-label-main">
-            Техническая поддержка
-          </div>
-          <div class="docs-variant-label-sub">
-            Таблица без скидки.
-          </div>
-        </div>
-      </label>
-
-      <!-- 3. ТП: со скидкой, без НДС (+ текст после таблицы) -->
-      <label class="docs-variant">
-        <input type="radio" name="doc-variant" value="kp_tp_no_vat">
-        <div>
-          <div class="docs-variant-label-main">
-            Поставка ПО со скидкой
-          </div>
-          <div class="docs-variant-label-sub">
-            Таблица без НДС.
-          </div>
-        </div>
-      </label>
-
-      <!-- 4. ТП: без скидки, без НДС -->
-      <label class="docs-variant">
-        <input type="radio" name="doc-variant" value="kp_tp_no_vat_nodiscount">
-        <div>
-          <div class="docs-variant-label-main">
-            Поставка ПО
-          </div>
-          <div class="docs-variant-label-sub">
-            Таблица без скидки и без НДС.
-          </div>
-        </div>
-      </label>
-      
-      <div style="display:flex; gap:12px; align-items:center; margin-top:8px;">
-      <label style="display:flex; gap:6px; align-items:center;">
-        <input type="radio" name="doc-format" value="pdf" checked>
-        PDF
-      </label>
-
-      <label style="display:flex; gap:6px; align-items:center;">
-        <input type="radio" name="doc-format" value="docx">
-        DOCX
-      </label>
-
-      <button class="btn btn-primary" id="btn-generate-doc">
-        Скачать
-      </button>
-      </div>
     </div>
-</div>
+  </div>
+  </div>
 
   <div id="product-dropdown" class="product-dropdown">
     <div class="product-dropdown-search">
@@ -1155,33 +1273,16 @@
           <div class="price-items-wrapper">
             <div class="price-items-header">
               <span>Товары в прайсе</span>
-
               <div class="price-items-header-right">
-                <button
-                  class="btn"
-                  id="pm-items-btn-add"
-                  type="button"
-                  title="Добавить товар в прайс"
-                >Добавить товар</button>
-
-                <button class="btn btn-danger" id="pm-items-btn-del-selected" type="button" title="Удалить выбранные товары">
-                  Удалить товар
-                </button>
-
-                <input
-                  type="text"
-                  id="pm-items-search"
-                  placeholder="Поиск товара..."
-                  class="pm-items-search"
-                >
-
-                <button
-                  class="modal-action-btn"
-                  id="pm-items-btn-maximize"
-                  title="Развернуть товары на весь экран"
-                  type="button"
-                >⛶</button>
+                <button class="btn" id="pm-items-btn-add" type="button" title="Добавить товар в прайс">Добавить товар</button>
+                <button class="btn btn-danger" id="pm-items-btn-del-selected" type="button" title="Удалить выбранные товары">Удалить товар</button>
+                <input type="text" id="pm-items-search" placeholder="Поиск товара..." class="pm-items-search">
+                <button class="modal-action-btn" id="pm-items-btn-maximize" title="Развернуть товары на весь экран" type="button">⛶</button>
               </div>
+            </div>
+            <!-- Добавляем таблицу товаров -->
+            <div class="price-items-table-container">
+              <table class="price-items-table" id="pm-items-table"></table>
             </div>
           </div>
       </div>
