@@ -155,10 +155,11 @@ def delete_disk_file(file_id: int) -> None:
     bx_call("disk.file.delete", {"id": int(file_id)})
 
 
-def upload_docx_to_disk_replace(folder_id: int | str, filename: str, content: bytes) -> int:
+def upload_docx_to_disk_replace(folder_id: int | str, filename: str, content: bytes, created_by: int = None) -> int:
     """
     Если файл с таким названием уже есть в папке — удаляем (все совпадения),
     затем загружаем новый и возвращаем новый file_id.
+    created_by - ID пользователя, который будет владельцем файла
     """
     folder_id_int = int(folder_id)
     filename = _sanitize_filename(filename)
@@ -168,10 +169,53 @@ def upload_docx_to_disk_replace(folder_id: int | str, filename: str, content: by
         try:
             delete_disk_file(fid)
         except Exception:
-            # не валим процесс из-за одного файла
             pass
 
-    return upload_docx_to_disk(folder_id_int, filename, content)
+    return upload_docx_to_disk(folder_id_int, filename, content, created_by)
+
+def upload_docx_to_disk(folder_id: int | str, filename: str, content: bytes, created_by: int = None) -> int:
+
+    filename = _sanitize_filename(filename)
+
+    params = {
+        "id": int(folder_id),
+        "data": {"NAME": filename},
+        "generateUniqueName": 0
+    }
+    
+    if created_by:
+        params["data"]["CREATED_BY"] = created_by
+
+    resp = bx_call("disk.folder.uploadfile", params)
+
+    result = resp.get("result") or resp
+    upload_url = result.get("uploadUrl") or result.get("upload_url")
+    field = result.get("field") or "file"
+
+    if not upload_url:
+        raise RuntimeError(f"disk.folder.uploadfile не вернул uploadUrl: {resp}")
+
+    files = {
+        field: (filename, content, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    }
+    r2 = requests.post(upload_url, files=files, timeout=180)
+    r2.raise_for_status()
+
+    j2 = r2.json()
+    res2 = j2.get("result", j2)
+
+    file_id = None
+    if isinstance(res2, dict):
+        file_id = res2.get("ID") or res2.get("Id") or res2.get("id")
+    elif isinstance(res2, list) and res2:
+        first = res2[0]
+        if isinstance(first, dict):
+            file_id = first.get("ID") or first.get("Id") or first.get("id")
+
+    if not file_id:
+        raise RuntimeError(f"Не удалось получить file_id из ответа uploadUrl: {j2}")
+
+    return int(file_id)
 
 
 def get_portal_base() -> str:
@@ -204,8 +248,11 @@ def get_disk_file_detail_url(file_id: int) -> str:
 # CRM updates
 # =========================
 
-def set_deal_kp_link(deal_id: int, link: str) -> None:
-    bx_call("crm.deal.update", {"id": int(deal_id), "fields": {UF_KP_LINK_DEAL: link}})
+def set_deal_kp_link(deal_id: int, link: str, field_name: str = None) -> None:
+    if field_name is None:
+        field_name = UF_KP_LINK_DEAL
+    
+    bx_call("crm.deal.update", {"id": int(deal_id), "fields": {field_name: link}})
 
 
 def upload_docx_to_deal_file_field(deal_id: int, field_code: str, filename: str, content: bytes) -> dict:
@@ -224,18 +271,15 @@ def upload_docx_to_deal_file_field(deal_id: int, field_code: str, filename: str,
     })
 
 
-def set_quote_kp_link(quote_id: int, link: str) -> None:
-    """
-    Пишем ссылку КП в предложение (crm.item.update, entityTypeId=7).
-    """
+def set_quote_kp_link(quote_id: int, link: str, field_name: str = None) -> None:
+    if field_name is None:
+        field_name = UF_KP_LINK_QUOTE
+    
     bx_call("crm.item.update", {
         "entityTypeId": 7,
         "id": int(quote_id),
-        "fields": {
-            UF_KP_LINK_QUOTE: link
-        }
+        "fields": {field_name: link}
     })
-
 
 def upload_docx_to_quote_file_field(quote_id: int, filename: str, content: bytes) -> dict:
     """
