@@ -27,8 +27,8 @@ CONTRACT_FOLDER_ID = 1199
 DOCUMENT_TYPES = {
     "kp": {
         "folder_id": KP_FOLDER_ID,
-        "deal_field": "UF_CRM_1768908090840",
-        "deal_field_camel": "ufCrm_1768908090840",
+        "deal_field": "UF_CRM_697C815A3D688",
+        "deal_field_camel": "ufCrm_697C815A3D688",
         "name_prefix": "КП_"
     },
     "contract": {
@@ -80,7 +80,8 @@ def download_file_from_url(url: str) -> tuple[bytes, str]:
     
     return response.content, filename
 
-def detect_document_type(title: str, template_id: str = None) -> str:
+def detect_document_type(title: str, template_id: str = None):
+    
     if template_id:
         template_config = {
             "38": "kp",
@@ -93,12 +94,17 @@ def detect_document_type(title: str, template_id: str = None) -> str:
     
     title_lower = title.lower()
     
-    contract_markers = ["договор", "контракт", "contract"]
+    contract_markers = ["договор", "контракт", "contract" "поставка"]
     for marker in contract_markers:
         if marker in title_lower:
             return "contract"
     
-    return "kp"
+    kp_markers = ["коммерческое", "предложение", "кп", "kp"]
+    for marker in kp_markers:
+        if marker in title_lower:
+            return "kp"
+    
+    return None
 
 def save_file_link(entity_type: str, entity_id: int, file_url: str, doc_type: str):
     doc_config = DOCUMENT_TYPES.get(doc_type, DOCUMENT_TYPES["kp"])
@@ -144,14 +150,20 @@ def handle_bitrix_webhook():
             return jsonify({"error": "No download URL"}), 400
 
         doc_type = detect_document_type(doc_title, template_id)
-        doc_config = DOCUMENT_TYPES.get(doc_type, DOCUMENT_TYPES["kp"])
+        
+        if doc_type is None:
+            return jsonify({
+                "status": "skipped", 
+                "reason": "unknown_document_type",
+                "title": doc_title
+            }), 200
+
+        doc_config = DOCUMENT_TYPES.get(doc_type)
         
         if doc_config["folder_id"] is None:
             return jsonify({"error": f"Folder ID not configured for {doc_type}"}), 500
 
-        # Всегда используем пользователя 10 как владельца файла
         owner_id = 10
-
         file_content, original_filename = download_file_from_url(download_url)
 
         safe_title = "".join(c for c in doc_title if c.isalnum() or c in " .-_()").strip()
@@ -176,4 +188,16 @@ def handle_bitrix_webhook():
 
     except Exception as e:
         print(f"Webhook error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@webhook_bp.route("/run-initials-job", methods=["GET"])
+def run_initials_job_endpoint():
+    """Эндпоинт для запуска обработчика инициалов"""
+    try:
+        from app.handlers.initials_job import run
+        run()
+        return jsonify({"success": True, "message": "Job completed"}), 200
+    except Exception as e:
+        logger.error(f"Ошибка в эндпоинте run-initials-job: {e}")
         return jsonify({"error": str(e)}), 500

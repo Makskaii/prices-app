@@ -2229,6 +2229,35 @@
             showToast("Ошибка сети при генерации документа", "error");
           }
         }
+        async function syncProducts() {
+          const btn = document.getElementById("btn-sync-products");
+          try {
+              btn.disabled = true;
+              btn.innerHTML = '⏳';
+              
+              const response = await fetch("/api/products/sync", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" }
+              });
+              
+              if (!response.ok) {
+                  throw new Error("Ошибка синхронизации");
+              }
+              
+              const result = await response.json();
+              
+              showToast(`Синхронизация завершена: +${result.new} новых, обновлено ${result.updated}, удалено ${result.deleted}`, "success");
+              
+              await fetchProducts();
+              renderLines();
+              
+          } catch (error) {
+              showToast("Ошибка синхронизации: " + error.message, "error");
+          } finally {
+              btn.disabled = false;
+              btn.innerHTML = '🔄';
+          }
+      }
 
         // -------------------- DROPDOWN HELPERS --------------------
         function isDropdownOpen() {
@@ -3955,6 +3984,12 @@
               if (window.BX24 && BX24.closeApplication) BX24.closeApplication();
               else showToast("Отмена. Просто закройте вкладку.", "error");
             });
+          }
+
+          // Кнопка синхронизации товаров
+          const btnSyncProducts = document.getElementById("btn-sync-products");
+          if (btnSyncProducts) {
+              btnSyncProducts.addEventListener("click", syncProducts);
           }
 
           document.addEventListener("visibilitychange", () => {
