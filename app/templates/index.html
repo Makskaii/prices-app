@@ -1044,6 +1044,65 @@
       visibility: visible !important;
       opacity: 1 !important;
     }
+    /* Выравнивание кнопок в нижней панели */
+    .footer-buttons {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      margin-bottom: 16px;
+      width: 100%;
+    }
+
+    .footer-left {
+      display: flex;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .footer-right {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      flex: 1;
+    }
+    #pm-footer {
+      display: flex !important;
+      justify-content: flex-end !important;
+      align-items: center;
+      padding: 8px 14px;
+      gap: 8px;
+      border-top: 1px solid #e1e6ec;
+    }
+
+    .pm-footer-actions {
+      display: flex;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    /* Убираем старый spacer */
+    .modal-footer-spacer {
+      display: none;
+    }
+    .status-badge {
+      font-size: 11px;
+      margin-left: 8px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+
+    .status-badge.already {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .product-row.not-in-price .status-badge {
+      background: #ffebee;
+      color: #c62828;
+    }
   </style>
 
 </head>
@@ -1059,6 +1118,7 @@
         <button class="btn btn-light btn-icon-sync" id="btn-sync-products" title="Синхронизировать товары из Битрикс">🔄</button>
       </div>
       <div class="toolbar-top-right">
+        <button class="btn" id="btn-manage-prices">Управление прайсами</button>
         <span class="tag" id="tag-deal-info">Сделка: неизвестно</span>
       </div>
     </div>
@@ -1111,10 +1171,11 @@
       </div>
     </div>
 
-    <!-- Нижняя панель с кнопками -->
     <div class="footer-buttons">
+      <div class="footer-left">
+        <!-- Пустой div для баланса, можно добавить сюда что-то позже -->
+      </div>
       <div class="footer-right">
-        <button class="btn" id="btn-manage-prices">Управление прайсами</button>
         <button class="btn" id="btn-cancel">Отмена</button>
         <button class="btn btn-success" id="btn-save">Сохранить</button>
       </div>
@@ -3426,9 +3487,18 @@
               if (set && !set.has(String(p.id))) row.classList.add("not-in-price");
             }
             if (productDropdownMode === "pm_add" && pmSelectedId) {
-              const set = PRICE_LIST_PRODUCT_IDS_CACHE.get(String(pmSelectedId));
-              if (set && set.has(String(p.id))) row.classList.add("not-in-price"); // reuse style as "already exists"
-              // but we also guard on click
+                const set = PRICE_LIST_PRODUCT_IDS_CACHE.get(String(pmSelectedId));
+                if (set && set.has(String(p.id))) {
+                    row.classList.add("already-in-price");
+                    // Добавляем текст через JavaScript
+                    const nameEl = row.querySelector(".product-row-name");
+                    if (nameEl && !nameEl.querySelector(".status-badge")) {
+                        const badge = document.createElement("span");
+                        badge.className = "status-badge already";
+                        badge.textContent = "уже есть в прайсе";
+                        nameEl.appendChild(badge);
+                    }
+                }
             }
 
             row.addEventListener("click", async (e) => {
@@ -3980,9 +4050,34 @@
 
           const btnCancel = document.getElementById("btn-cancel");
           if (btnCancel) {
-            btnCancel.addEventListener("click", () => {
-              if (window.BX24 && BX24.closeApplication) BX24.closeApplication();
-              else showToast("Отмена. Просто закройте вкладку.", "error");
+            btnCancel.addEventListener("click", async () => {
+              try {
+                // Показываем подтверждение, если есть несохранённые изменения
+                if (hasUnsavedChanges) {
+                  if (!confirm("Есть несохранённые изменения. Отменить все действия?")) {
+                    return;
+                  }
+                }
+                
+                // Загружаем состояние из поля в сделке/предложении
+                if (CURRENT_CONTEXT.id && CURRENT_CONTEXT.mode) {
+                  showToast("Загрузка сохранённого состояния...", "success", true);
+                  
+                  // Загружаем состояние из Bitrix24
+                  loadEntityState();
+                  
+                  showToast("Состояние восстановлено", "success");
+                } else {
+                  // Если нет контекста, просто очищаем строки
+                  lines = [createEmptyLine()];
+                  recalcAll();
+                  renderLines();
+                  markSaved();
+                  showToast("Создана новая строка", "success");
+                }
+              } catch (e) {
+                showToast("Ошибка при отмене: " + e.message, "error");
+              }
             });
           }
 
