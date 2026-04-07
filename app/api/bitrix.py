@@ -1,8 +1,9 @@
-# api/bitrix.py
 from flask import Blueprint, request, jsonify
 import requests
 import json
 import os
+import logging
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 
 bitrix_bp = Blueprint("bitrix_bp", __name__)
 
@@ -11,40 +12,58 @@ BITRIX_WEBHOOK = os.getenv(
     "https://bitrix.primegeo.ru/rest/36/lmhkn7l2tf26204z"
 ).rstrip("/")
 
-# Поля состояния (CRM custom fields)
 DEAL_STATE_FIELD = os.getenv("DEAL_STATE_FIELD", "UF_CRM_1764667329")
 QUOTE_STATE_FIELD = os.getenv("QUOTE_STATE_FIELD", "ufCrm_QUOTE_1769692749969")
-
-import logging
 
 logger = logging.getLogger("bitrix_sync")
 logger.setLevel(logging.INFO)
 
 if not logger.handlers:
     handler = logging.StreamHandler()
-    formatter = logging.Formatter(
-        "[%(asctime)s] %(levelname)s - %(message)s"
-    )
+    formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
 
 def jdump(data):
-    # гарантируем строку JSON без экранирования кириллицы
     return json.dumps(data, ensure_ascii=False)
 
-def jload(s: str):
+
+def jload(s):
     if not s:
         return {}
     if isinstance(s, (dict, list)):
-        # иногда состояние могут уже отдать объектом (маловероятно, но на всякий)
         return s
     try:
         return json.loads(s)
     except Exception:
         return {}
 
-def bx_post(method: str, payload: dict, timeout: int = 20) -> dict:
+
+def to_decimal(value, default="0"):
+    try:
+        if value is None or value == "":
+            return Decimal(default)
+        return Decimal(str(value).replace(",", "."))
+    except (InvalidOperation, ValueError, TypeError):
+        return Decimal(default)
+
+
+def q2(value):
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def q6(value):
+    return value.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+
+
+def bx_number(value, places=6):
+    if places == 2:
+        return format(q2(value), "f")
+    return format(q6(value), "f")
+
+
+def bx_post(method, payload, timeout=20):
     url = f"{BITRIX_WEBHOOK}/{method}.json"
     r = requests.post(url, json=payload, timeout=timeout)
 
@@ -58,14 +77,60 @@ def bx_post(method: str, payload: dict, timeout: int = 20) -> dict:
     return resp
 
 
+def build_product_rows(lines):
+    rows = []
+
+    for index, line in enumerate(lines, start=1):
+        try:
+            product_id_raw = line.get("productId")
+            if not product_id_raw:
+                logger.warning(f"Skipped row #{index}: missing productId")
+                continue
+
+            quantity = to_decimal(line.get("quantity"), "0")
+            base_price = to_decimal(line.get("price"), "0")
+            discount_rate = to_decimal(line.get("discountPercent"), "0")
+            vat_rate = to_decimal(line.get("vatPercent"), "0")
+
+            discount_multiplier = Decimal("1") - (discount_rate / Decimal("100"))
+            vat_multiplier = Decimal("1") + (vat_rate / Decimal("100"))
+
+            price_for_bitrix = base_price * discount_multiplier * vat_multiplier
+            price_for_bitrix = q6(price_for_bitrix)
+
+            row = {
+                "productId": int(product_id_raw),
+                "price": bx_number(price_for_bitrix, 6),
+                "quantity": bx_number(quantity, 6),
+                "discountTypeId": 2,
+                "discountRate": bx_number(discount_rate, 2),
+                "taxRate": bx_number(vat_rate, 2),
+                "taxIncluded": "N",
+                "sort": index * 10
+            }
+
+            logger.info(
+                f"Prepared row #{index}: "
+                f"base_price={base_price}, "
+                f"price_for_bitrix={price_for_bitrix}, "
+                f"quantity={quantity}, "
+                f"discount={discount_rate}, "
+                f"vat={vat_rate}, "
+                f"row={row}"
+            )
+
+            rows.append(row)
+
+        except Exception as e:
+            logger.exception(f"Row error #{index}: {e}")
+
+    return rows
+
+
 @bitrix_bp.route("/bx/load", methods=["GET", "POST"])
 def load_from_bitrix():
-    """
-    Возвращает состояние приложения из CRM, чтобы ВСЕ пользователи видели одинаковую таблицу.
-    Можно дергать GET ?mode=DEAL&id=123 или POST {mode,id}
-    """
     if request.method == "GET":
-        mode = (request.args.get("mode") or "").upper()  # DEAL | QUOTE
+        mode = (request.args.get("mode") or "").upper()
         entity_id = str(request.args.get("id") or "")
     else:
         data = request.get_json(silent=True) or {}
@@ -76,7 +141,6 @@ def load_from_bitrix():
         return jsonify({"ok": False, "error": "Invalid entity id"}), 400
 
     try:
-        # ---------------- QUOTE ----------------
         if mode == "QUOTE":
             payload = {
                 "entityTypeId": 7,
@@ -86,8 +150,6 @@ def load_from_bitrix():
             item = (resp.get("result") or {}).get("item") or {}
             raw_state = item.get(QUOTE_STATE_FIELD) or ""
             state = jload(raw_state)
-
-            # вернем ещё opportunity для сверки
             opportunity = item.get("opportunity")
 
             return jsonify({
@@ -95,18 +157,16 @@ def load_from_bitrix():
                 "mode": "QUOTE",
                 "id": int(entity_id),
                 "state": state,
-                "rawState": raw_state,   # удобно для дебага, можно убрать позже
+                "rawState": raw_state,
                 "sumTotal": opportunity
             })
 
-        # ---------------- DEAL ----------------
         if mode == "DEAL":
             payload = {"id": int(entity_id)}
             resp = bx_post("crm.deal.get", payload, timeout=20)
             deal = resp.get("result") or {}
             raw_state = deal.get(DEAL_STATE_FIELD) or ""
             state = jload(raw_state)
-
             opportunity = deal.get("OPPORTUNITY")
 
             return jsonify({
@@ -114,7 +174,7 @@ def load_from_bitrix():
                 "mode": "DEAL",
                 "id": int(entity_id),
                 "state": state,
-                "rawState": raw_state,   # удобно для дебага, можно убрать позже
+                "rawState": raw_state,
                 "sumTotal": opportunity
             })
 
@@ -122,6 +182,7 @@ def load_from_bitrix():
 
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 502
+
 
 @bitrix_bp.route("/bx/save", methods=["POST"])
 def save_to_bitrix():
@@ -134,51 +195,22 @@ def save_to_bitrix():
         mode = (data.get("mode") or "").upper()
         entity_id = data.get("id")
         state = data.get("state") or {}
-        sum_total = float(data.get("sumTotal") or 0)
+        sum_total = q2(to_decimal(data.get("sumTotal"), "0"))
 
         if not entity_id:
             return jsonify({"ok": False, "error": "Missing entity id"}), 400
 
         lines = state.get("lines") or []
-        rows = []
-
-        for index, line in enumerate(lines, start=1):
-            try:
-                quantity = float(line.get("quantity") or 0)
-                price_app = float(line.get("price") or 0)
-                discount_rate = float(line.get("discountPercent") or 0)
-                vat_rate = float(line.get("vatPercent") or 0)
-
-                # Считаем итоговую цену с учетом скидки
-                total_price = price_app * quantity * (1 - discount_rate / 100)
-                # Добавляем НДС
-                total_price_with_vat = round(total_price * (1 + vat_rate / 100), 2)
-
-                row = {
-                    "productId": int(line.get("productId")),
-                    "price": total_price_with_vat,  # передаем сумму с НДС
-                    "quantity": quantity,
-                    "discountTypeId": 2,
-                    "discountRate": discount_rate,
-                    "taxRate": vat_rate,
-                    "sort": index * 10
-                }
-
-                logger.info(f"Prepared row #{index}: {row}")
-                rows.append(row)
-
-            except Exception as e:
-                logger.error(f"Row error: {e}")
+        rows = build_product_rows(lines)
 
         logger.info(f"Final rows payload: {rows}")
 
-        # ---------------- DEAL ----------------
         if mode == "DEAL":
             bx_post("crm.deal.update", {
                 "id": int(entity_id),
                 "fields": {
                     DEAL_STATE_FIELD: jdump(state),
-                    "OPPORTUNITY": sum_total
+                    "OPPORTUNITY": bx_number(sum_total, 2)
                 }
             }, timeout=20)
 
@@ -192,14 +224,13 @@ def save_to_bitrix():
             logger.info("=== BX SAVE END ===")
             return jsonify({"ok": True})
 
-        # ---------------- QUOTE ----------------
         if mode == "QUOTE":
             quote_update_response = bx_post("crm.item.update", {
                 "entityTypeId": 7,
                 "id": int(entity_id),
                 "fields": {
                     QUOTE_STATE_FIELD: jdump(state),
-                    "opportunity": sum_total
+                    "opportunity": bx_number(sum_total, 2)
                 }
             }, timeout=20)
 
