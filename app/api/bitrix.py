@@ -194,11 +194,12 @@ def save_to_bitrix():
 
         # ---------------- QUOTE ----------------
         if mode == "QUOTE":
-            bx_post("crm.quote.update", {
+            quote_update_response = bx_post("crm.item.update", {
+                "entityTypeId": 7,
                 "id": int(entity_id),
                 "fields": {
                     QUOTE_STATE_FIELD: jdump(state),
-                    "OPPORTUNITY": sum_total
+                    "opportunity": sum_total
                 }
             }, timeout=20)
 
@@ -208,6 +209,7 @@ def save_to_bitrix():
                 "productRows": rows
             }, timeout=20)
 
+            logger.info(f"Quote update response: {quote_update_response}")
             logger.info(f"Product rows response: {product_response}")
             logger.info("=== BX SAVE END ===")
             return jsonify({"ok": True})

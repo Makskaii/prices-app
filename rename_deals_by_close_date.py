@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 import sys
 import json
@@ -221,7 +218,6 @@ def main():
         except Exception as e:
             total_errors += 1
             print(f"[ERROR] company={cid} PASS2: {e}")
-            # не прерываем весь скрипт, идём дальше
             continue
 
     print("\n=== Итоги ===")
