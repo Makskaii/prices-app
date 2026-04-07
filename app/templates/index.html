@@ -1551,6 +1551,8 @@
 
           let LAST_REMOTE_STATE_RAW = null;
           let REMOTE_STATE_LOADED = false;
+          let LOCAL_EDIT_VERSION = 0;
+          let ENTITY_LOAD_SEQ = 0;
 
           // for compatibility in docs generation
           let CURRENT_DEAL_ID = null;
@@ -1678,6 +1680,8 @@
 
           function markDirty() {
             hasUnsavedChanges = true;
+            LOCAL_EDIT_VERSION += 1;
+
             const toast = document.querySelector(".toast.persistent");
             if (toast) {
               toast.classList.remove("visible");
@@ -2060,25 +2064,89 @@
           }
 
           function detectContextFromBXPlacement(cb) {
-            if (!window.BX24) { cb(false); return; }
+            if (!window.BX24) {
+              cb(false);
+              return;
+            }
+
+            function applyContextFromData(source) {
+              if (!source || typeof source !== "object") return false;
+
+              let mode = null;
+              let id = null;
+              let entityTypeId = null;
+
+              const rawEntityTypeId =
+                source.ENTITY_TYPE_ID ||
+                source.entityTypeId ||
+                source.entity_type_id ||
+                source.ownerTypeId ||
+                source.OWNER_TYPE_ID;
+
+              const quoteId =
+                source.QUOTE_ID ||
+                source.quoteId ||
+                source.quote_id;
+
+              const dealId =
+                source.DEAL_ID ||
+                source.dealId ||
+                source.deal_id;
+
+              const entityId =
+                source.ENTITY_ID ||
+                source.entityId ||
+                source.entity_id ||
+                source.ID ||
+                source.Id ||
+                source.id;
+
+              if (quoteId) {
+                mode = "QUOTE";
+                id = String(quoteId).match(/\d+/)?.[0] || String(quoteId);
+                entityTypeId = 7;
+              } else if (dealId) {
+                mode = "DEAL";
+                id = String(dealId).match(/\d+/)?.[0] || String(dealId);
+                entityTypeId = 2;
+              } else if (String(rawEntityTypeId) === "7" && entityId) {
+                mode = "QUOTE";
+                id = String(entityId).match(/\d+/)?.[0] || String(entityId);
+                entityTypeId = 7;
+              } else if (String(rawEntityTypeId) === "2" && entityId) {
+                mode = "DEAL";
+                id = String(entityId).match(/\d+/)?.[0] || String(entityId);
+                entityTypeId = 2;
+              }
+
+              if (!mode || !id) return false;
+
+              CURRENT_CONTEXT.mode = mode;
+              CURRENT_CONTEXT.id = id;
+              CURRENT_CONTEXT.entityTypeId = entityTypeId;
+              CURRENT_DEAL_ID = id;
+
+              logEvent("Context detected from placement", {
+                mode: CURRENT_CONTEXT.mode,
+                id: CURRENT_CONTEXT.id,
+                entityTypeId: CURRENT_CONTEXT.entityTypeId
+              });
+
+              return true;
+            }
 
             try {
               if (BX24.placement && BX24.placement.info) {
                 const info = BX24.placement.info();
                 if (info && info.options) {
                   let opts = info.options;
-                  try { if (typeof opts === "string") opts = JSON.parse(opts); } catch (e) { opts = {}; }
+                  try {
+                    if (typeof opts === "string") opts = JSON.parse(opts);
+                  } catch (e) {
+                    opts = {};
+                  }
 
-                  const dealId =
-                    opts.DEAL_ID || opts.Id || opts.ID || opts.ENTITY_ID || opts.entityId || opts.dealId;
-
-                  if (dealId) {
-                    const digits = String(dealId).match(/\d+/);
-                    CURRENT_CONTEXT.mode = "DEAL";
-                    CURRENT_CONTEXT.id = digits ? digits[0] : String(dealId);
-                    CURRENT_CONTEXT.entityTypeId = 2;
-                    CURRENT_DEAL_ID = CURRENT_CONTEXT.id;
-                    logEvent("Context from placement.info", { mode: CURRENT_CONTEXT.mode, id: CURRENT_CONTEXT.id });
+                  if (applyContextFromData(opts)) {
                     cb(true);
                     return;
                   }
@@ -2093,24 +2161,26 @@
                   cb(false);
                   return;
                 }
+
                 const raw = (res.data && typeof res.data === "function") ? res.data() : (res.data ? res.data : {});
-                let dealId = raw && (raw.ID || raw.DEAL_ID || raw.ENTITY_ID || raw.entityId || raw.dealId);
 
-                if (!dealId && raw && raw.PLACEMENT_OPTIONS) {
-                  let opts2 = raw.PLACEMENT_OPTIONS;
-                  try { if (typeof opts2 === "string") opts2 = JSON.parse(opts2); } catch (e) { opts2 = {}; }
-                  dealId = opts2 && (opts2.DEAL_ID || opts2.ID || opts2.ENTITY_ID || opts2.entityId || opts2.dealId);
-                }
-
-                if (dealId) {
-                  const digits = String(dealId).match(/\d+/);
-                  CURRENT_CONTEXT.mode = "DEAL";
-                  CURRENT_CONTEXT.id = digits ? digits[0] : String(dealId);
-                  CURRENT_CONTEXT.entityTypeId = 2;
-                  CURRENT_DEAL_ID = CURRENT_CONTEXT.id;
-                  logEvent("Context from placement.getData", { mode: CURRENT_CONTEXT.mode, id: CURRENT_CONTEXT.id });
+                if (applyContextFromData(raw)) {
                   cb(true);
                   return;
+                }
+
+                if (raw && raw.PLACEMENT_OPTIONS) {
+                  let opts2 = raw.PLACEMENT_OPTIONS;
+                  try {
+                    if (typeof opts2 === "string") opts2 = JSON.parse(opts2);
+                  } catch (e) {
+                    opts2 = {};
+                  }
+
+                  if (applyContextFromData(opts2)) {
+                    cb(true);
+                    return;
+                  }
                 }
 
                 cb(false);
@@ -2147,70 +2217,183 @@
             });
           }
 
+
+          async function loadEntityStateFromBackend() {
+            if (!CURRENT_CONTEXT.id || !CURRENT_CONTEXT.mode) return null;
+
+            const url =
+              `${apiBase}/api/bx/load?mode=${encodeURIComponent(CURRENT_CONTEXT.mode)}&id=${encodeURIComponent(CURRENT_CONTEXT.id)}`;
+
+            const resp = await fetch(url, {
+              method: "GET",
+              headers: { "Accept": "application/json" }
+            });
+
+            const data = await resp.json().catch(() => ({}));
+
+            if (!resp.ok || data.ok === false) {
+              throw new Error(data.error || ("HTTP " + resp.status));
+            }
+
+            const rawState = data.rawState || "";
+            const state = data.state || {};
+
+            logEvent("State loaded from backend", {
+              mode: CURRENT_CONTEXT.mode,
+              id: CURRENT_CONTEXT.id,
+              hasRawState: !!rawState,
+              stateLines: Array.isArray(state.lines) ? state.lines.length : 0
+            });
+
+            return {
+              rawState: rawState || JSON.stringify(state || {}),
+              state: state || {}
+            };
+          }
           // -------------------- LOAD / SAVE STATE --------------------
           function loadEntityState() {
-            if (!CURRENT_CONTEXT.id) return;
-            if (!CURRENT_CONTEXT.mode) return;
+            if (!CURRENT_CONTEXT.id || !CURRENT_CONTEXT.mode) return;
 
-            if (window.BX24) {
-              entityGet(function (err, entity) {
-                if (err) {
-                  logEvent("entityGet error", { err }, "ERROR");
-                  loadStateFromLocalStorageFallback();
+            const requestSeq = ++ENTITY_LOAD_SEQ;
+            const requestEditVersion = LOCAL_EDIT_VERSION;
+
+            loadEntityStateFromBackend()
+              .then((payload) => {
+                if (!payload) return;
+                if (requestSeq !== ENTITY_LOAD_SEQ) return;
+
+                if (LOCAL_EDIT_VERSION !== requestEditVersion || hasUnsavedChanges) {
+                  logEvent("Remote state skipped because local state changed", {
+                    mode: CURRENT_CONTEXT.mode,
+                    id: CURRENT_CONTEXT.id,
+                    requestSeq,
+                    requestEditVersion,
+                    currentEditVersion: LOCAL_EDIT_VERSION
+                  }, "WARN");
                   return;
                 }
 
-                const dataObj = entity || {};
-                const fieldName = getStateFieldName();
-                const rawState = dataObj ? dataObj[fieldName] : null;
-
-                logEvent("Entity loaded", {
+                LAST_REMOTE_STATE_RAW = payload.rawState;
+                REMOTE_STATE_LOADED = true;
+                applyAppState(payload.state);
+                markSaved();
+              })
+              .catch((backendErr) => {
+                logEvent("Backend load failed", {
+                  error: String(backendErr),
                   mode: CURRENT_CONTEXT.mode,
-                  id: CURRENT_CONTEXT.id,
-                  fieldName,
-                  hasState: !!rawState
-                });
+                  id: CURRENT_CONTEXT.id
+                }, "ERROR");
 
-                if (!rawState) {
-                  loadStateFromLocalStorageFallback();
+                if (window.BX24) {
+                  entityGet(function (err, entity) {
+                    if (requestSeq !== ENTITY_LOAD_SEQ) return;
+
+                    if (LOCAL_EDIT_VERSION !== requestEditVersion || hasUnsavedChanges) {
+                      logEvent("BX24 fallback skipped because local state changed", {
+                        mode: CURRENT_CONTEXT.mode,
+                        id: CURRENT_CONTEXT.id,
+                        requestSeq,
+                        requestEditVersion,
+                        currentEditVersion: LOCAL_EDIT_VERSION
+                      }, "WARN");
+                      return;
+                    }
+
+                    if (err) {
+                      logEvent("entityGet fallback error", { err }, "ERROR");
+                      loadStateFromLocalStorageFallback(requestEditVersion, requestSeq);
+                      return;
+                    }
+
+                    const dataObj = entity || {};
+                    const fieldName = getStateFieldName();
+                    const rawState = dataObj ? dataObj[fieldName] : null;
+
+                    logEvent("Entity loaded via BX24 fallback", {
+                      mode: CURRENT_CONTEXT.mode,
+                      id: CURRENT_CONTEXT.id,
+                      fieldName,
+                      hasState: !!rawState
+                    });
+
+                    if (!rawState) {
+                      loadStateFromLocalStorageFallback(requestEditVersion, requestSeq);
+                      return;
+                    }
+
+                    if (LAST_REMOTE_STATE_RAW === rawState && REMOTE_STATE_LOADED) return;
+
+                    try {
+                      const st = JSON.parse(rawState);
+
+                      if (requestSeq !== ENTITY_LOAD_SEQ) return;
+                      if (LOCAL_EDIT_VERSION !== requestEditVersion || hasUnsavedChanges) {
+                        logEvent("Parsed BX24 state skipped because local state changed", {
+                          mode: CURRENT_CONTEXT.mode,
+                          id: CURRENT_CONTEXT.id,
+                          requestSeq,
+                          requestEditVersion,
+                          currentEditVersion: LOCAL_EDIT_VERSION
+                        }, "WARN");
+                        return;
+                      }
+
+                      LAST_REMOTE_STATE_RAW = rawState;
+                      REMOTE_STATE_LOADED = true;
+                      applyAppState(st);
+                      markSaved();
+                    } catch (e) {
+                      logEvent("CRM state parse error in BX24 fallback", {
+                        error: String(e),
+                        rawStateSample: String(rawState).slice(0, 200)
+                      }, "ERROR");
+                      loadStateFromLocalStorageFallback(requestEditVersion, requestSeq);
+                    }
+                  });
                   return;
                 }
 
-                if (LAST_REMOTE_STATE_RAW === rawState && REMOTE_STATE_LOADED) return;
-
-                try {
-                  const st = JSON.parse(rawState);
-                  LAST_REMOTE_STATE_RAW = rawState;
-                  REMOTE_STATE_LOADED = true;
-                  applyAppState(st);
-                  markSaved();
-                } catch (e) {
-                  logEvent("Ошибка парсинга состояния из CRM", {
-                    e: String(e),
-                    rawStateSample: String(rawState).slice(0, 200)
-                  }, "ERROR");
-                  loadStateFromLocalStorageFallback();
-                }
+                loadStateFromLocalStorageFallback(requestEditVersion, requestSeq);
               });
+          }
+
+          function loadStateFromLocalStorageFallback(expectedEditVersion = null, expectedRequestSeq = null) {
+            if (expectedRequestSeq != null && expectedRequestSeq !== ENTITY_LOAD_SEQ) return;
+
+            if (expectedEditVersion != null && (LOCAL_EDIT_VERSION !== expectedEditVersion || hasUnsavedChanges)) {
+              logEvent("Local fallback skipped because local state changed", {
+                mode: CURRENT_CONTEXT.mode,
+                id: CURRENT_CONTEXT.id,
+                expectedEditVersion,
+                currentEditVersion: LOCAL_EDIT_VERSION
+              }, "WARN");
               return;
             }
 
-            loadStateFromLocalStorageFallback();
-          }
-
-          function loadStateFromLocalStorageFallback() {
             try {
               const k = getLocalStorageKey();
               if (k && window.localStorage) {
                 const localRaw = window.localStorage.getItem(k);
                 if (localRaw) {
                   const localState = JSON.parse(localRaw);
+
+                  logEvent("State loaded from localStorage fallback", {
+                    key: k,
+                    mode: CURRENT_CONTEXT.mode,
+                    id: CURRENT_CONTEXT.id
+                  }, "WARN");
+
                   applyAppState(localState);
-                  logEvent("State loaded from localStorage FALLBACK", { key: k });
                   return;
                 }
               }
             } catch (e) { }
+
+            logEvent("No remote state and no local fallback state", {
+              mode: CURRENT_CONTEXT.mode,
+              id: CURRENT_CONTEXT.id
+            }, "WARN");
 
             applyAppState({ lines: [] });
           }
@@ -3770,80 +3953,8 @@
                 const num = Number(line.price) || 0;
                 inputPrice.value = num.toString().replace(".", ",");
               });
-
-              // Итого - теперь редактируемое поле
-              const tdTotal = document.createElement("td");
-              tdTotal.className = "col-total";
-              const inputTotal = document.createElement("input");
-              inputTotal.type = "text";
-              inputTotal.value = formatMoney(line.total);
-              inputTotal.style.textAlign = "right";
-
-              // При фокусе показываем число без форматирования для удобства редактирования
-              inputTotal.addEventListener("focus", function () {
-                this.value = line.total.toFixed(2).replace(".", ",");
-              });
-
-              // При потере фокуса - пересчитываем скидку
-              inputTotal.addEventListener("blur", function () {
-                let raw = this.value.replace(/\s+/g, "").replace(",", ".");
-                let newTotal = parseFloat(raw);
-
-                // Проверяем, что введено корректное число
-                if (isNaN(newTotal) || newTotal < 0) {
-                  newTotal = 0;
-                }
-
-                // Базовая стоимость (цена × количество)
-                const basePrice = line.price * line.quantity;
-
-                if (basePrice > 0) {
-                  // Рассчитываем новую скидку
-                  // Итого = base - (base * discount/100) + vat
-                  // Но нам нужно найти discount, зная итого
-                  // Сначала вычтем НДС из итого
-                  const baseAfterDiscount = newTotal - line.vatAmount;
-
-                  // Теперь можем найти скидку
-                  const newDiscountPercent = ((basePrice - baseAfterDiscount) / basePrice) * 100;
-
-                  // Ограничиваем скидку от 0 до 100
-                  line.discountPercent = Math.min(100, Math.max(0, newDiscountPercent));
-                } else {
-                  line.discountPercent = 0;
-                }
-
-                // Пересчитываем все суммы
-                recalcLine(line);
-                updateSummary();
+              inputPrice.addEventListener("input", () => {
                 markDirty();
-
-                // Обновляем значение поля
-                this.value = formatMoney(line.total);
-
-                // Обновляем отображение скидки в этой строке
-                const discountInput = tr.querySelector(".col-discount input");
-                if (discountInput) {
-                  discountInput.value = line.discountPercent;
-                }
-              });
-
-              tdTotal.appendChild(inputTotal);
-              tr.appendChild(tdTotal);
-
-              inputPrice.addEventListener("blur", () => {
-                let raw = inputPrice.value || "";
-                raw = raw.replace(/\s+/g, "").replace(",", ".");
-                let num = Number(raw);
-                if (isNaN(num)) num = 0;
-
-                line.price = num;
-                recalcLine(line);
-                updateSummary();
-                markDirty();
-
-                inputPrice.value = formatMoney(line.price);
-                tdTotal.textContent = formatMoney(line.total);
               });
 
               tdPrice.appendChild(inputPrice);
@@ -3858,14 +3969,6 @@
               inputQty.min = "0";
               inputQty.step = "1";
               inputQty.value = line.quantity;
-
-              inputQty.addEventListener("input", () => {
-                line.quantity = Number(inputQty.value) || 0;
-                recalcLine(line);
-                updateSummary();
-                markDirty();
-                tdTotal.textContent = formatMoney(line.total);
-              });
 
               const unitSpan = document.createElement("span");
               unitSpan.className = "unit-label";
@@ -3882,24 +3985,9 @@
               inputDiscount.type = "number";
               inputDiscount.min = "0";
               inputDiscount.max = "100";
-              inputDiscount.step = "1";
-              inputDiscount.value = line.discountPercent;
+              inputDiscount.step = "0.01";
               inputDiscount.value = line.discountPercent.toFixed(2);
 
-              inputDiscount.addEventListener("input", () => {
-                line.discountPercent = Number(inputDiscount.value) || 0;
-                recalcLine(line);
-                updateSummary();
-                markDirty();
-                const totalInput = tr.querySelector(".col-total input");
-                if (totalInput) totalInput.value = formatMoney(line.total);
-              });
-
-              inputDiscount.addEventListener("blur", () => {
-                // Округляем до двух знаков
-                line.discountPercent = Math.round(line.discountPercent * 100) / 100;
-                inputDiscount.value = line.discountPercent.toFixed(2);
-              });
               tdDiscount.appendChild(inputDiscount);
               tr.appendChild(tdDiscount);
 
@@ -3909,23 +3997,139 @@
               inputVat.type = "number";
               inputVat.min = "0";
               inputVat.max = "100";
-              inputVat.step = "0.1";  // можно вводить с десятыми долями
+              inputVat.step = "0.1";
               inputVat.value = line.vatPercent;
+
+              tdVat.appendChild(inputVat);
+              tr.appendChild(tdVat);
+
+              const tdTotal = document.createElement("td");
+              tdTotal.className = "col-total";
+              const inputTotal = document.createElement("input");
+              inputTotal.type = "text";
+              inputTotal.value = formatMoney(line.total);
+              inputTotal.style.textAlign = "right";
+
+              tdTotal.appendChild(inputTotal);
+              tr.appendChild(tdTotal);
+
+              function syncTotalInput() {
+                inputTotal.value = formatMoney(line.total);
+              }
+
+              function applyManualTotal(rawValue) {
+                let newTotal = toNumberMoney(rawValue);
+
+                if (!isFinite(newTotal) || newTotal < 0) {
+                  newTotal = 0;
+                }
+
+                const price = Number(line.price) || 0;
+                const qty = Number(line.quantity) || 0;
+                const vatPercent = Number(line.vatPercent) || 0;
+                const base = price * qty;
+                const grossMax = base * (1 + vatPercent / 100);
+
+                if (grossMax <= 0) {
+                  line.discountPercent = 0;
+                  recalcLine(line);
+                  updateSummary();
+                  markDirty();
+                  inputDiscount.value = line.discountPercent.toFixed(2);
+                  syncTotalInput();
+                  return;
+                }
+
+                if (newTotal > grossMax) {
+                  newTotal = grossMax;
+                }
+
+                let newDiscountPercent = (1 - newTotal / grossMax) * 100;
+
+                if (!isFinite(newDiscountPercent)) {
+                  newDiscountPercent = 0;
+                }
+
+                line.discountPercent = Math.min(100, Math.max(0, Math.round(newDiscountPercent * 100) / 100));
+
+                recalcLine(line);
+                updateSummary();
+                markDirty();
+
+                inputDiscount.value = line.discountPercent.toFixed(2);
+                syncTotalInput();
+              }
+
+              inputTotal.addEventListener("focus", () => {
+                inputTotal.value = (Number(line.total) || 0).toFixed(2).replace(".", ",");
+                setTimeout(() => {
+                  inputTotal.select();
+                }, 0);
+              });
+
+              inputTotal.addEventListener("input", () => {
+                markDirty();
+              });
+
+              inputTotal.addEventListener("blur", () => {
+                applyManualTotal(inputTotal.value);
+              });
+
+              inputTotal.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  inputTotal.blur();
+                }
+              });
+
+              inputPrice.addEventListener("blur", () => {
+                let raw = inputPrice.value || "";
+                raw = raw.replace(/\s+/g, "").replace(",", ".");
+                let num = Number(raw);
+
+                if (isNaN(num)) num = 0;
+
+                line.price = num;
+                recalcLine(line);
+                updateSummary();
+                markDirty();
+
+                inputPrice.value = formatMoney(line.price);
+                syncTotalInput();
+              });
+
+              inputQty.addEventListener("input", () => {
+                line.quantity = Number(inputQty.value) || 0;
+                recalcLine(line);
+                updateSummary();
+                markDirty();
+                syncTotalInput();
+              });
+
+              inputDiscount.addEventListener("input", () => {
+                line.discountPercent = Number(inputDiscount.value) || 0;
+                recalcLine(line);
+                updateSummary();
+                markDirty();
+                syncTotalInput();
+              });
+
+              inputDiscount.addEventListener("blur", () => {
+                line.discountPercent = Math.min(100, Math.max(0, Math.round((Number(inputDiscount.value) || 0) * 100) / 100));
+                recalcLine(line);
+                updateSummary();
+                markDirty();
+                inputDiscount.value = line.discountPercent.toFixed(2);
+                syncTotalInput();
+              });
 
               inputVat.addEventListener("input", () => {
                 line.vatPercent = Number(inputVat.value) || 0;
                 recalcLine(line);
                 updateSummary();
                 markDirty();
-                // Обновляем отображение итога
-                const totalCell = tr.querySelector(".col-total");
-                if (totalCell) totalCell.textContent = formatMoney(line.total);
+                syncTotalInput();
               });
-
-              tdVat.appendChild(inputVat);
-              tr.appendChild(tdVat);
-
-              tr.appendChild(tdTotal);
 
               tbody.appendChild(tr);
             });
