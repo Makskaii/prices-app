@@ -1568,6 +1568,10 @@
           let dropdownAnchorEl = null;
           let dropdownScrollParents = [];
           let dropdownRaf = 0;
+          let totalEditState = {
+            lineId: null,
+            value: ""
+          };
 
           // -------------------- LOGGING --------------------
           const LOG_KEY = "prices_widget_debug_log_v2";
@@ -1723,6 +1727,42 @@
             return `${intPart},${decPart}`;
           }
 
+          function roundMoney(value) {
+            return Math.round((toNumberMoney(value) + Number.EPSILON) * 100) / 100;
+          }
+          function isTotalEditActive() {
+            return !!totalEditState.lineId;
+          }
+
+          function startTotalEdit(line, inputEl) {
+            totalEditState.lineId = line.id;
+            totalEditState.value = (Number(line.total) || 0).toFixed(2).replace(".", ",");
+            inputEl.value = totalEditState.value;
+            setTimeout(() => {
+              inputEl.select();
+            }, 0);
+          }
+
+          function updateTotalEditValue(line, value) {
+            if (totalEditState.lineId === line.id) {
+              totalEditState.value = value;
+            }
+          }
+
+          function finishTotalEdit(line) {
+            if (totalEditState.lineId === line.id) {
+              totalEditState.lineId = null;
+              totalEditState.value = "";
+            }
+          }
+
+          function getRenderedTotalValue(line) {
+            if (totalEditState.lineId === line.id) {
+              return totalEditState.value;
+            }
+            return formatMoney(line.total);
+          }
+
           // -------------------- LINES --------------------
           function getDefaultPriceListId() {
             try {
@@ -1760,16 +1800,16 @@
           }
 
           function recalcLine(line) {
-            const price = Number(line.price) || 0;
-            const qty = Number(line.quantity) || 0;
-            const discountPercent = Number(line.discountPercent) || 0;
-            const vatPercent = Number(line.vatPercent) || 0;
+            const price = toNumberMoney(line.price);
+            const qty = toNumberMoney(line.quantity);
+            const discountPercent = toNumberMoney(line.discountPercent);
+            const vatPercent = toNumberMoney(line.vatPercent);
 
-            const base = price * qty;
-            const discountAmount = base * (discountPercent / 100);
-            const baseAfterDiscount = base - discountAmount;
-            const vatAmount = baseAfterDiscount * (vatPercent / 100);
-            const total = baseAfterDiscount + vatAmount;
+            const base = roundMoney(price * qty);
+            const discountAmount = roundMoney(base * (discountPercent / 100));
+            const baseAfterDiscount = roundMoney(base - discountAmount);
+            const vatAmount = roundMoney(baseAfterDiscount * (vatPercent / 100));
+            const total = roundMoney(baseAfterDiscount + vatAmount);
 
             line.base = base;
             line.discountAmount = discountAmount;
@@ -2253,6 +2293,7 @@
           // -------------------- LOAD / SAVE STATE --------------------
           function loadEntityState() {
             if (!CURRENT_CONTEXT.id || !CURRENT_CONTEXT.mode) return;
+            if (isTotalEditActive()) return;
 
             const requestSeq = ++ENTITY_LOAD_SEQ;
             const requestEditVersion = LOCAL_EDIT_VERSION;
@@ -4007,28 +4048,39 @@
               tdTotal.className = "col-total";
               const inputTotal = document.createElement("input");
               inputTotal.type = "text";
-              inputTotal.value = formatMoney(line.total);
+              inputTotal.value = getRenderedTotalValue(line);
               inputTotal.style.textAlign = "right";
 
               tdTotal.appendChild(inputTotal);
               tr.appendChild(tdTotal);
 
-              function syncTotalInput() {
+              function syncTotalInput(force = false) {
+                if (!force && totalEditState.lineId === line.id) return;
                 inputTotal.value = formatMoney(line.total);
               }
 
+              if (totalEditState.lineId === line.id) {
+                requestAnimationFrame(() => {
+                  if (totalEditState.lineId !== line.id) return;
+                  if (!document.body.contains(inputTotal)) return;
+                  inputTotal.focus();
+                  const pos = inputTotal.value.length;
+                  inputTotal.setSelectionRange(pos, pos);
+                });
+              }
+
               function applyManualTotal(rawValue) {
-                let newTotal = toNumberMoney(rawValue);
+                let newTotal = roundMoney(rawValue);
 
                 if (!isFinite(newTotal) || newTotal < 0) {
                   newTotal = 0;
                 }
 
-                const price = Number(line.price) || 0;
-                const qty = Number(line.quantity) || 0;
-                const vatPercent = Number(line.vatPercent) || 0;
-                const base = price * qty;
-                const grossMax = base * (1 + vatPercent / 100);
+                const price = toNumberMoney(line.price);
+                const qty = toNumberMoney(line.quantity);
+                const vatPercent = toNumberMoney(line.vatPercent);
+                const base = roundMoney(price * qty);
+                const grossMax = roundMoney(base * (1 + vatPercent / 100));
 
                 if (grossMax <= 0) {
                   line.discountPercent = 0;
@@ -4036,7 +4088,7 @@
                   updateSummary();
                   markDirty();
                   inputDiscount.value = line.discountPercent.toFixed(2);
-                  syncTotalInput();
+                  syncTotalInput(true);
                   return;
                 }
 
@@ -4050,29 +4102,33 @@
                   newDiscountPercent = 0;
                 }
 
-                line.discountPercent = Math.min(100, Math.max(0, Math.round(newDiscountPercent * 100) / 100));
+                line.discountPercent = Math.min(100, Math.max(0, newDiscountPercent));
 
                 recalcLine(line);
                 updateSummary();
                 markDirty();
 
                 inputDiscount.value = line.discountPercent.toFixed(2);
-                syncTotalInput();
+                syncTotalInput(true);
               }
 
               inputTotal.addEventListener("focus", () => {
-                inputTotal.value = (Number(line.total) || 0).toFixed(2).replace(".", ",");
-                setTimeout(() => {
-                  inputTotal.select();
-                }, 0);
+                if (totalEditState.lineId === line.id) {
+                  inputTotal.value = totalEditState.value;
+                  return;
+                }
+                startTotalEdit(line, inputTotal);
               });
 
               inputTotal.addEventListener("input", () => {
+                updateTotalEditValue(line, inputTotal.value);
                 markDirty();
               });
 
               inputTotal.addEventListener("blur", () => {
-                applyManualTotal(inputTotal.value);
+                const rawValue = inputTotal.value;
+                finishTotalEdit(line);
+                applyManualTotal(rawValue);
               });
 
               inputTotal.addEventListener("keydown", (e) => {
@@ -4391,14 +4447,12 @@
 
             document.addEventListener("visibilitychange", () => {
               if (!document.hidden) {
-                // При возвращении на вкладку
-                if (!hasUnsavedChanges) {
+                if (!hasUnsavedChanges && !isTotalEditActive()) {
                   loadEntityState();
                 } else {
                   showToast("Есть несохранённые изменения. Нажмите «Сохранить», чтобы не потерять их.", "error", true);
                 }
               } else {
-                // При уходе со вкладки
                 if (suppressUnsavedToast) return;
                 if (hasUnsavedChanges) {
                   showToast("Есть несохранённые изменения. Если уйдёте — они могут не сохраниться.", "error", true);
@@ -4409,6 +4463,7 @@
             setInterval(() => {
               if (!CURRENT_CONTEXT.id || !CURRENT_CONTEXT.mode) return;
               if (hasUnsavedChanges) return;
+              if (isTotalEditActive()) return;
               loadEntityState();
             }, 15000);
 
